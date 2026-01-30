@@ -140,21 +140,21 @@ function parseLinkedInDate(dateStr) {
     'november': 10, 'nov': 10, 'december': 11, 'dec': 11,
   };
   
-  // Parse "16 nov. 2025" (with year)
-  const matchWithYear = dateStr.match(/(\d{1,2})\s+(\w+)\.?\s+(\d{4})/);
+  // Parse "16 nov. 2025" (with year) - use str (trimmed)
+  const matchWithYear = str.match(/(\d{1,2})\s+(\w+)\.?\s+(\d{4})/);
   if (matchWithYear) {
     const [, day, monthStr, year] = matchWithYear;
-    const month = months[monthStr.toLowerCase().replace('.', '')];
+    const month = months[monthStr.replace('.', '')];
     if (month !== undefined) {
       return new Date(parseInt(year), month, parseInt(day)).toISOString();
     }
   }
   
   // Parse "15 janv." or "23 janv." (WITHOUT year - assume current year)
-  const matchNoYear = dateStr.match(/(\d{1,2})\s+(\w+)\.?$/);
+  const matchNoYear = str.match(/(\d{1,2})\s+(\w+)\.?$/);
   if (matchNoYear) {
     const [, day, monthStr] = matchNoYear;
-    const month = months[monthStr.toLowerCase().replace('.', '')];
+    const month = months[monthStr.replace('.', '')];
     if (month !== undefined) {
       const currentYear = new Date().getFullYear();
       return new Date(currentYear, month, parseInt(day)).toISOString();
@@ -162,20 +162,20 @@ function parseLinkedInDate(dateStr) {
   }
   
   // Parse English format "Nov 16, 2025"
-  const matchEn = dateStr.match(/(\w+)\.?\s+(\d{1,2}),?\s+(\d{4})/);
+  const matchEn = str.match(/(\w+)\.?\s+(\d{1,2}),?\s+(\d{4})/);
   if (matchEn) {
     const [, monthStr, day, year] = matchEn;
-    const month = months[monthStr.toLowerCase().replace('.', '')];
+    const month = months[monthStr.replace('.', '')];
     if (month !== undefined) {
       return new Date(parseInt(year), month, parseInt(day)).toISOString();
     }
   }
   
   // Parse English format without year "Jan 15" or "Jan. 15"
-  const matchEnNoYear = dateStr.match(/(\w+)\.?\s+(\d{1,2})$/);
+  const matchEnNoYear = str.match(/(\w+)\.?\s+(\d{1,2})$/);
   if (matchEnNoYear) {
     const [, monthStr, day] = matchEnNoYear;
-    const month = months[monthStr.toLowerCase().replace('.', '')];
+    const month = months[monthStr.replace('.', '')];
     if (month !== undefined) {
       const currentYear = new Date().getFullYear();
       return new Date(currentYear, month, parseInt(day)).toISOString();
