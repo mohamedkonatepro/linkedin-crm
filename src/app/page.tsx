@@ -34,7 +34,9 @@ export default function Home() {
     try {
       const res = await fetch('/api/sync')
       const json = await res.json()
-      
+
+      console.log('Fetched sync data:', json)
+
       if (json.ok && json.data) {
         // Transform extension data to CRM format
         const conversations = (json.data.conversations || []).map((conv: any, index: number) => ({
@@ -73,10 +75,19 @@ export default function Home() {
           }
         }))
         
+        // Find the conversation ID for the current conversation (where messages are from)
+        const currentConvLinkedinId = json.data.currentConversation?.linkedinId
+        const activeConvIndex = (json.data.conversations || []).findIndex(
+          (c: any) => c.isActive
+        )
+        const currentConversationId = activeConvIndex >= 0 ? `conv-${activeConvIndex}` : null
+
+        console.log('Current conversation:', currentConvLinkedinId, 'activeIndex:', activeConvIndex, 'id:', currentConversationId)
+
         const messages = (json.data.messages || []).map((msg: any, index: number) => ({
           id: msg.urn || `msg-${index}`,
           user_id: 'demo',
-          conversation_id: 'current',
+          conversation_id: currentConversationId,
           contact_id: msg.sender?.linkedinId || null,
           linkedin_message_urn: msg.urn || `urn-${index}`,
           content: msg.content || '',
@@ -89,6 +100,7 @@ export default function Home() {
           synced_at: new Date().toISOString(),
         }))
         
+        console.log('Setting conversations:', conversations.length, conversations)
         setConversations(conversations)
         setMessages(messages)
         setLastSync(json.data.timestamp || new Date().toISOString())

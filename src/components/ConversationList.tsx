@@ -6,13 +6,23 @@ import { fr } from 'date-fns/locale'
 import { Star, Circle } from 'lucide-react'
 
 export function ConversationList() {
-  const { 
-    filteredConversations, 
-    selectedConversationId, 
-    selectConversation 
+  const {
+    conversations: allConversations,
+    filteredConversations,
+    selectedConversationId,
+    selectConversation,
+    searchQuery,
+    showUnreadOnly,
+    showStarredOnly,
+    filterPriority,
+    filterTags,
+    filterStatus,
   } = useCRMStore()
-  
+
+  // Subscribe to conversations AND filters to trigger re-renders
   const conversations = filteredConversations()
+
+  console.log('ConversationList render:', allConversations.length, 'total,', conversations.length, 'filtered')
 
   return (
     <div className="h-full flex flex-col">
