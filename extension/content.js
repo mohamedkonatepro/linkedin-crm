@@ -76,27 +76,84 @@ function extractLinkedInId(url) {
 }
 
 function parseLinkedInDate(dateStr) {
-  // LinkedIn uses relative dates like "16 nov. 2025" or "15:03"
+  // LinkedIn uses relative dates like "16 nov. 2025", "15:03", "lundi", "hier", etc.
   if (!dateStr) return null;
   
+  const str = dateStr.trim().toLowerCase();
+  
   // If it's just a time (HH:MM), assume today
-  if (/^\d{1,2}:\d{2}$/.test(dateStr.trim())) {
-    const [hours, minutes] = dateStr.trim().split(':');
+  if (/^\d{1,2}:\d{2}$/.test(str)) {
+    const [hours, minutes] = str.split(':');
     const date = new Date();
     date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
     return date.toISOString();
   }
   
-  // French month names
-  const months = {
-    'janv': 0, 'févr': 1, 'mars': 2, 'avr': 3, 'mai': 4, 'juin': 5,
-    'juil': 6, 'août': 7, 'sept': 8, 'oct': 9, 'nov': 10, 'déc': 11
+  // Day names (French and English) - calculate relative date
+  const dayNames = {
+    // French
+    'lundi': 1, 'mardi': 2, 'mercredi': 3, 'jeudi': 4, 'vendredi': 5, 'samedi': 6, 'dimanche': 0,
+    // English
+    'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0,
   };
   
-  // Parse "16 nov. 2025"
+  // Check for day name
+  for (const [dayName, dayNum] of Object.entries(dayNames)) {
+    if (str.includes(dayName)) {
+      const today = new Date();
+      const currentDay = today.getDay();
+      let daysAgo = currentDay - dayNum;
+      if (daysAgo <= 0) daysAgo += 7; // If same day or future, go back a week
+      const date = new Date(today);
+      date.setDate(date.getDate() - daysAgo);
+      date.setHours(0, 0, 0, 0);
+      return date.toISOString();
+    }
+  }
+  
+  // Check for "hier" / "yesterday"
+  if (str.includes('hier') || str.includes('yesterday')) {
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
+    date.setHours(0, 0, 0, 0);
+    return date.toISOString();
+  }
+  
+  // Check for "aujourd'hui" / "today"
+  if (str.includes("aujourd'hui") || str.includes('today')) {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date.toISOString();
+  }
+  
+  // French and English month names
+  const months = {
+    // French (full and abbreviated)
+    'janvier': 0, 'janv': 0, 'février': 1, 'févr': 1, 'mars': 2, 'avril': 3, 'avr': 3,
+    'mai': 4, 'juin': 5, 'juillet': 6, 'juil': 6, 'août': 7, 'aout': 7,
+    'septembre': 8, 'sept': 8, 'octobre': 9, 'oct': 9, 'novembre': 10, 'nov': 10,
+    'décembre': 11, 'déc': 11, 'decembre': 11, 'dec': 11,
+    // English (full and abbreviated)
+    'january': 0, 'jan': 0, 'february': 1, 'feb': 1, 'march': 2, 'mar': 2,
+    'april': 3, 'apr': 3, 'may': 4, 'june': 5, 'jun': 5, 'july': 6, 'jul': 6,
+    'august': 7, 'aug': 7, 'september': 8, 'sep': 8, 'october': 9, 'oct': 9,
+    'november': 10, 'nov': 10, 'december': 11, 'dec': 11,
+  };
+  
+  // Parse "16 nov. 2025" or "nov. 16, 2025"
   const match = dateStr.match(/(\d{1,2})\s+(\w+)\.?\s+(\d{4})/);
   if (match) {
     const [, day, monthStr, year] = match;
+    const month = months[monthStr.toLowerCase().replace('.', '')];
+    if (month !== undefined) {
+      return new Date(parseInt(year), month, parseInt(day)).toISOString();
+    }
+  }
+  
+  // Parse English format "Nov 16, 2025"
+  const matchEn = dateStr.match(/(\w+)\.?\s+(\d{1,2}),?\s+(\d{4})/);
+  if (matchEn) {
+    const [, monthStr, day, year] = matchEn;
     const month = months[monthStr.toLowerCase().replace('.', '')];
     if (month !== undefined) {
       return new Date(parseInt(year), month, parseInt(day)).toISOString();
@@ -177,10 +234,16 @@ function scrapeMessages() {
   
   items.forEach((item, index) => {
     try {
-      // Check for date header
+      // Check for date header - prefer datetime attribute
       const dateHeader = item.querySelector(SELECTORS.dateHeader);
       if (dateHeader) {
-        currentDate = parseLinkedInDate(dateHeader.textContent);
+        // First try datetime attribute
+        const datetimeAttr = dateHeader.getAttribute('datetime');
+        if (datetimeAttr) {
+          currentDate = datetimeAttr;
+        } else {
+          currentDate = parseLinkedInDate(dateHeader.textContent);
+        }
       }
       
       const event = item.querySelector(SELECTORS.messageEvent);
@@ -202,17 +265,44 @@ function scrapeMessages() {
       // Get message content
       const content = item.querySelector(SELECTORS.messageBody)?.textContent?.trim() || '';
       
-      // Get time
+      // Get time - try multiple sources
       const timeElement = item.querySelector(SELECTORS.messageTime);
-      const timeStr = timeElement?.textContent?.replace('•', '').trim();
-      
-      // Combine date and time
       let timestamp = null;
-      if (currentDate && timeStr) {
-        const [hours, minutes] = timeStr.split(':');
-        const date = new Date(currentDate);
-        date.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
+      
+      // First try: look for tooltip/label with full date (e.g., "Envoyé le 11/11/2025, 15:34")
+      // This appears on sent messages as a small indicator
+      let tooltipMatch = null;
+      const allDivs = item.querySelectorAll('div, span');
+      for (const div of allDivs) {
+        const text = div.textContent || div.getAttribute('aria-label') || '';
+        const match = text.match(/Envoyé le (\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})/);
+        if (match) {
+          tooltipMatch = match;
+          break;
+        }
+      }
+      
+      if (tooltipMatch) {
+        const [, day, month, year, hours, minutes] = tooltipMatch;
+        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
         timestamp = date.toISOString();
+      }
+      // Second try: use datetime attribute
+      else if (timeElement?.getAttribute('datetime')) {
+        timestamp = timeElement.getAttribute('datetime');
+      }
+      // Third try: combine currentDate with time string
+      else if (timeElement) {
+        const timeStr = timeElement.textContent?.replace('•', '').trim();
+        if (currentDate && timeStr) {
+          const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+          if (timeMatch) {
+            const [, hours, minutes] = timeMatch;
+            const date = new Date(currentDate);
+            date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            timestamp = date.toISOString();
+          }
+        }
       }
       
       const message = {
