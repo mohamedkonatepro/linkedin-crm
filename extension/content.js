@@ -13,6 +13,28 @@ const CONFIG = {
 // State
 let isInitialized = false;
 let syncInterval = null;
+let extensionValid = true;
+
+// Check if extension context is still valid
+function isExtensionValid() {
+  try {
+    // This will throw if extension was reloaded
+    chrome.runtime.getURL('');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Stop all intervals when extension is invalidated
+function cleanupOnInvalidation() {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+  extensionValid = false;
+  console.log('LinkedIn CRM: Extension reloaded - refresh the page to reconnect');
+}
 
 // =====================
 // SELECTORS
@@ -264,6 +286,12 @@ async function syncToServer(data) {
 }
 
 async function performFullSync() {
+  // Check if extension is still valid
+  if (!isExtensionValid()) {
+    cleanupOnInvalidation();
+    return null;
+  }
+  
   console.log('LinkedIn CRM: Starting full sync...');
   
   const conversations = scrapeConversationList();
@@ -278,11 +306,16 @@ async function performFullSync() {
     messages,
   };
   
-  // Send to popup for display
-  chrome.runtime.sendMessage({
-    type: 'SYNC_DATA',
-    data,
-  });
+  // Send to popup for display (wrapped in try-catch to handle extension reload)
+  try {
+    chrome.runtime.sendMessage({
+      type: 'SYNC_DATA',
+      data,
+    });
+  } catch (e) {
+    // Extension context invalidated - ignore (happens after extension reload)
+    console.log('LinkedIn CRM: Extension reloaded, refresh page to reconnect');
+  }
   
   // If API is configured, sync to server
   if (CONFIG.API_URL) {
