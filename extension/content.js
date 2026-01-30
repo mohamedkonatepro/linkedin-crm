@@ -292,14 +292,22 @@ function scrapeMessages() {
       let timestamp = null;
       
       // First try: look for tooltip/label with full date (e.g., "Envoyé le 11/11/2025, 15:34")
-      // This appears on sent messages as a small indicator
+      // This appears on sent messages in title attribute or text content
       let tooltipMatch = null;
-      const allDivs = item.querySelectorAll('div, span');
-      for (const div of allDivs) {
-        const text = div.textContent || div.getAttribute('aria-label') || '';
-        const match = text.match(/Envoyé le (\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})/);
-        if (match) {
-          tooltipMatch = match;
+      const allElements = item.querySelectorAll('div, span');
+      for (const el of allElements) {
+        // Check title attribute (most common for sent indicator)
+        const title = el.getAttribute('title') || '';
+        const titleMatch = title.match(/Envoyé le (\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})/);
+        if (titleMatch) {
+          tooltipMatch = titleMatch;
+          break;
+        }
+        // Also check textContent and aria-label
+        const text = el.textContent || el.getAttribute('aria-label') || '';
+        const textMatch = text.match(/Envoyé le (\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})/);
+        if (textMatch) {
+          tooltipMatch = textMatch;
           break;
         }
       }
