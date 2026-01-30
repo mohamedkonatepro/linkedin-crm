@@ -2,65 +2,51 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { SyncData, SyncConversation, SyncMessage } from '@/types'
 
+// Store synced data in memory for now (until auth is set up)
+let syncedData: SyncData | null = null
+
+// CORS headers for Chrome extension
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return NextResponse.json({}, { headers: corsHeaders })
+}
+
 export async function POST(request: NextRequest) {
   try {
     const data: SyncData = await request.json()
-    const supabase = await createClient()
     
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Store in memory for demo (no auth required)
+    syncedData = {
+      ...data,
+      timestamp: new Date().toISOString(),
     }
 
-    const userId = user.id
-    const results = {
-      conversations: { synced: 0, errors: 0 },
-      messages: { synced: 0, errors: 0 },
-    }
-
-    // Process conversations
-    for (const conv of data.conversations) {
-      try {
-        await syncConversation(supabase, userId, conv)
-        results.conversations.synced++
-      } catch (e) {
-        console.error('Error syncing conversation:', e)
-        results.conversations.errors++
-      }
-    }
-
-    // Process messages
-    for (const msg of data.messages) {
-      try {
-        await syncMessage(supabase, userId, msg, data.currentConversation?.linkedinId)
-        results.messages.synced++
-      } catch (e) {
-        console.error('Error syncing message:', e)
-        results.messages.errors++
-      }
-    }
-
-    // Log sync
-    await supabase.from('sync_log').insert({
-      user_id: userId,
-      sync_type: data.type,
-      status: 'completed',
-      conversations_synced: results.conversations.synced,
-      messages_synced: results.messages.synced,
-      completed_at: new Date().toISOString(),
+    console.log('Sync received:', {
+      conversations: data.conversations?.length || 0,
+      messages: data.messages?.length || 0,
     })
+
+    // TODO: Re-enable Supabase when auth is set up
+    // For now, just store in memory and return success
 
     return NextResponse.json({
       ok: true,
-      results,
+      results: {
+        conversations: { synced: data.conversations?.length || 0, errors: 0 },
+        messages: { synced: data.messages?.length || 0, errors: 0 },
+      },
       timestamp: new Date().toISOString(),
-    })
+    }, { headers: corsHeaders })
   } catch (e) {
     console.error('Sync error:', e)
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     )
   }
 }
@@ -172,11 +158,17 @@ async function syncMessage(
 }
 
 export async function GET(request: NextRequest) {
+  // Return synced data for frontend
+  if (syncedData) {
+    return NextResponse.json({
+      ok: true,
+      data: syncedData,
+    }, { headers: corsHeaders })
+  }
+
   return NextResponse.json({
-    status: 'ok',
-    message: 'LinkedIn CRM Sync API',
-    endpoints: {
-      'POST /api/sync': 'Sync conversations and messages from extension',
-    },
-  })
+    ok: true,
+    data: null,
+    message: 'No data synced yet',
+  }, { headers: corsHeaders })
 }

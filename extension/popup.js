@@ -148,6 +148,7 @@ async function checkConnection() {
   
   if (!tab) {
     setStatus('disconnected', 'Ouvre LinkedIn Messaging');
+    currentTabId = null;
     return false;
   }
   
@@ -160,10 +161,11 @@ async function checkConnection() {
       return true;
     }
   } catch (e) {
-    console.log('Connection check failed:', e);
+    // Content script not loaded yet
+    console.log('Connection check failed:', e.message);
   }
   
-  setStatus('disconnected', 'Extension non active sur la page');
+  setStatus('disconnected', 'Rafraîchis la page LinkedIn (F5)');
   return false;
 }
 
@@ -202,18 +204,23 @@ async function triggerSync() {
 }
 
 async function toggleAutoSync() {
-  if (!currentTabId) return;
-  
   const enabled = autoSync.checked;
+  
+  // Save config regardless of connection status
+  await saveConfig();
+  
+  if (!currentTabId) {
+    console.log('No LinkedIn tab connected, config saved for later');
+    return;
+  }
   
   try {
     await chrome.tabs.sendMessage(currentTabId, {
       type: enabled ? 'START_AUTO_SYNC' : 'STOP_AUTO_SYNC',
     });
-    await saveConfig();
   } catch (e) {
-    console.error('Auto-sync toggle failed:', e);
-    autoSync.checked = !enabled;
+    console.log('Tab not ready yet, config saved for later:', e.message);
+    // Don't revert the checkbox - config is saved
   }
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useCRMStore } from '@/store'
 import { ConversationList } from '@/components/ConversationList'
 import { MessageThread } from '@/components/MessageThread'
@@ -20,10 +20,90 @@ export default function Home() {
     isSidebarOpen, 
     toggleSidebar,
     selectedConversationId,
-    isLoading 
+    isLoading,
+    setConversations,
+    setMessages,
+    setLoading
   } = useCRMStore()
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [lastSync, setLastSync] = useState<string | null>(null)
+
+  // Fetch synced data from API
+  const fetchSyncedData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sync')
+      const json = await res.json()
+      
+      if (json.ok && json.data) {
+        // Transform extension data to CRM format
+        const conversations = (json.data.conversations || []).map((conv: any, index: number) => ({
+          id: conv.threadId || `conv-${index}`,
+          user_id: 'demo',
+          contact_id: conv.linkedinId || `contact-${index}`,
+          linkedin_thread_id: conv.threadId || `thread-${index}`,
+          is_starred: conv.isStarred || false,
+          is_archived: false,
+          is_unread: !conv.lastMessageFromMe,
+          unread_count: conv.lastMessageFromMe ? 0 : 1,
+          last_message_preview: conv.lastMessagePreview || '',
+          last_message_at: conv.lastMessageTime || new Date().toISOString(),
+          last_message_from_me: conv.lastMessageFromMe || false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          contact: {
+            id: conv.linkedinId || `contact-${index}`,
+            user_id: 'demo',
+            linkedin_id: conv.linkedinId || '',
+            name: conv.name || 'Unknown',
+            headline: '',
+            profile_url: conv.linkedinId ? `https://linkedin.com/in/${conv.linkedinId}` : '',
+            avatar_url: conv.avatarUrl || null,
+            company: null,
+            location: null,
+            tags: [],
+            priority: 0,
+            status: 'active' as const,
+            notes: null,
+            first_contact_at: null,
+            last_contact_at: conv.lastMessageTime,
+            message_count: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        }))
+        
+        const messages = (json.data.messages || []).map((msg: any, index: number) => ({
+          id: msg.urn || `msg-${index}`,
+          user_id: 'demo',
+          conversation_id: 'current',
+          contact_id: msg.sender?.linkedinId || null,
+          linkedin_message_urn: msg.urn || `urn-${index}`,
+          content: msg.content || '',
+          content_type: 'text',
+          is_from_me: msg.isFromMe || false,
+          is_read: true,
+          sent_at: msg.timestamp || new Date().toISOString(),
+          attachments: [],
+          created_at: new Date().toISOString(),
+          synced_at: new Date().toISOString(),
+        }))
+        
+        setConversations(conversations)
+        setMessages(messages)
+        setLastSync(json.data.timestamp || new Date().toISOString())
+      }
+    } catch (e) {
+      console.error('Failed to fetch synced data:', e)
+    }
+  }, [setConversations, setMessages])
+
+  // Poll for updates every 5 seconds
+  useEffect(() => {
+    fetchSyncedData()
+    const interval = setInterval(fetchSyncedData, 5000)
+    return () => clearInterval(interval)
+  }, [fetchSyncedData])
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">

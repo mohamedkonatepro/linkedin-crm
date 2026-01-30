@@ -238,22 +238,25 @@ async function syncToServer(data) {
     console.log('LinkedIn CRM: No API URL configured');
     return;
   }
-  
+
   try {
-    const response = await fetch(`${CONFIG.API_URL}/api/sync`, {
+    // Clean URL (remove trailing slash)
+    const baseUrl = CONFIG.API_URL.replace(/\/+$/, '');
+
+    // Use background script to bypass mixed content restrictions (HTTPS -> HTTP)
+    const response = await chrome.runtime.sendMessage({
+      type: 'API_REQUEST',
+      url: `${baseUrl}/api/sync`,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-      credentials: 'include',
+      body: data,
     });
-    
-    if (!response.ok) {
-      throw new Error(`Sync failed: ${response.status}`);
+
+    if (!response || !response.ok) {
+      throw new Error(response?.error || 'Sync failed');
     }
-    
-    return await response.json();
+
+    console.log('LinkedIn CRM: Sync success via background', response.data);
+    return response.data;
   } catch (e) {
     console.error('LinkedIn CRM: Sync error', e);
     throw e;
