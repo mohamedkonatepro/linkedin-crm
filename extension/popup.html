@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn CRM Sync</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 350px;
+      min-height: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #0077b5 0%, #00a0dc 100%);
+      color: white;
+      padding: 16px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .header p {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-top: 4px;
+    }
+    
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #94a3b8;
+    }
+    
+    .status-dot.connected {
+      background: #22c55e;
+    }
+    
+    .status-dot.syncing {
+      background: #f59e0b;
+      animation: pulse 1s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .status-text {
+      font-size: 13px;
+      color: #64748b;
+    }
+    
+    .sync-btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      background: #0077b5;
+      color: white;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .sync-btn:hover {
+      background: #005c8f;
+    }
+    
+    .sync-btn:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    
+    .section {
+      padding: 16px;
+    }
+    
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 12px;
+    }
+    
+    .config-form {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    
+    .form-group {
+      margin-bottom: 12px;
+    }
+    
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: #0077b5;
+    }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    
+    .stat-card {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #0077b5;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    
+    .conversation-list {
+      background: white;
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .conversation-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    
+    .conversation-item:last-child {
+      border-bottom: none;
+    }
+    
+    .conversation-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #e2e8f0;
+    }
+    
+    .conversation-info {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .conversation-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .conversation-preview {
+      font-size: 11px;
+      color: #64748b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: #94a3b8;
+    }
+    
+    .empty-state p {
+      font-size: 13px;
+    }
+    
+    .footer {
+      padding: 12px 16px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    
+    .toggle-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #cbd5e1;
+      border-radius: 12px;
+      transition: 0.3s;
+    }
+    
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+    
+    .toggle input:checked + .toggle-slider {
+      background: #0077b5;
+    }
+    
+    .toggle input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>LinkedIn CRM Sync</h1>
+    <p>Synchronise tes conversations</p>
+  </div>
+  
+  <div class="status-bar">
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-text" id="statusText">Non connecté</span>
+    </div>
+    <button class="sync-btn" id="syncBtn" disabled>Sync</button>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">Configuration</div>
+    <div class="config-form">
+      <div class="form-group">
+        <label>URL du CRM</label>
+        <input type="url" id="apiUrl" placeholder="https://ton-crm.vercel.app">
+      </div>
+      <div class="form-group toggle-group">
+        <label>Sync automatique</label>
+        <label class="toggle">
+          <input type="checkbox" id="autoSync">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">Statistiques</div>
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="convCount">0</div>
+        <div class="stat-label">Conversations</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="msgCount">0</div>
+        <div class="stat-label">Messages</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">Conversations récentes</div>
+    <div class="conversation-list" id="conversationList">
+      <div class="empty-state">
+        <p>Aucune conversation synchronisée</p>
+      </div>
+    </div>
+  </div>
+  
+  <div class="footer">
+    Dernière sync: <span id="lastSync">Jamais</span>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
