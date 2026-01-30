@@ -1,29 +1,37 @@
 /**
  * LinkedIn CRM - Popup Script
+ * Handles UI and communication with background script
  */
 
 // Elements
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const syncBtn = document.getElementById('syncBtn');
+const apiSyncBtn = document.getElementById('apiSyncBtn');
+const fetchAllConvBtn = document.getElementById('fetchAllConvBtn');
+const fetchAllMsgBtn = document.getElementById('fetchAllMsgBtn');
 const apiUrl = document.getElementById('apiUrl');
 const autoSync = document.getElementById('autoSync');
 const convCount = document.getElementById('convCount');
 const msgCount = document.getElementById('msgCount');
 const conversationList = document.getElementById('conversationList');
 const lastSync = document.getElementById('lastSync');
+const progressBar = document.getElementById('progressBar');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
 
 // State
 let isConnected = false;
 let isSyncing = false;
 let currentTabId = null;
+let apiConversations = [];
 
 // =====================
 // STORAGE
 // =====================
 
 async function loadConfig() {
-  const result = await chrome.storage.local.get(['apiUrl', 'autoSync', 'lastSyncData', 'lastSyncTime']);
+  const result = await chrome.storage.local.get(['apiUrl', 'autoSync', 'lastSyncData', 'lastSyncTime', 'apiConversations']);
   
   if (result.apiUrl) {
     apiUrl.value = result.apiUrl;
@@ -39,6 +47,11 @@ async function loadConfig() {
   
   if (result.lastSyncTime) {
     lastSync.textContent = formatTime(new Date(result.lastSyncTime));
+  }
+  
+  if (result.apiConversations) {
+    apiConversations = result.apiConversations;
+    updateConversationCount();
   }
 }
 
@@ -68,24 +81,41 @@ function setStatus(status, text) {
   statusText.textContent = text;
 }
 
+function showProgress(show, percent = 0, text = 'Chargement...') {
+  if (show) {
+    progressBar.classList.add('active');
+    progressText.classList.add('active');
+    progressFill.style.width = `${percent}%`;
+    progressText.textContent = text;
+  } else {
+    progressBar.classList.remove('active');
+    progressText.classList.remove('active');
+  }
+}
+
+function updateConversationCount() {
+  convCount.textContent = apiConversations.length || 0;
+}
+
 function updateUI(data) {
   // Update counts
-  convCount.textContent = data.conversations?.length || 0;
+  convCount.textContent = data.conversations?.length || apiConversations.length || 0;
   msgCount.textContent = data.messages?.length || 0;
   
   // Update conversation list
-  if (data.conversations && data.conversations.length > 0) {
-    conversationList.innerHTML = data.conversations.slice(0, 5).map(conv => `
+  const conversations = data.conversations || [];
+  if (conversations.length > 0) {
+    conversationList.innerHTML = conversations.slice(0, 5).map(conv => `
       <div class="conversation-item">
         <img 
           class="conversation-avatar" 
-          src="${conv.avatarUrl || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'}" 
+          src="${conv.avatarUrl || conv.participantProfilePicture || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'}" 
           alt=""
           onerror="this.style.display='none'"
         >
         <div class="conversation-info">
-          <div class="conversation-name">${escapeHtml(conv.name)}</div>
-          <div class="conversation-preview">${escapeHtml(conv.lastMessagePreview || '')}</div>
+          <div class="conversation-name">${escapeHtml(conv.name || conv.participantName || 'Unknown')}</div>
+          <div class="conversation-preview">${escapeHtml(conv.lastMessagePreview || conv.lastMessage || '')}</div>
         </div>
       </div>
     `).join('');
@@ -115,13 +145,14 @@ function formatTime(date) {
 }
 
 function escapeHtml(text) {
+  if (!text) return '';
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 }
 
 // =====================
-// MESSAGING
+// DOM SYNC (existing)
 // =====================
 
 async function getLinkedInTab() {
@@ -161,7 +192,6 @@ async function checkConnection() {
       return true;
     }
   } catch (e) {
-    // Content script not loaded yet
     console.log('Connection check failed:', e.message);
   }
   
@@ -169,11 +199,11 @@ async function checkConnection() {
   return false;
 }
 
-async function triggerSync() {
+async function triggerDOMSync() {
   if (isSyncing || !currentTabId) return;
   
   isSyncing = true;
-  setStatus('syncing', 'Synchronisation...');
+  setStatus('syncing', 'Synchronisation DOM...');
   syncBtn.disabled = true;
   
   try {
@@ -192,10 +222,10 @@ async function triggerSync() {
     
     if (response) {
       updateUI(response);
-      setStatus('connected', 'Synchronisé');
+      setStatus('connected', 'Synchronisé (DOM)');
     }
   } catch (e) {
-    console.error('Sync failed:', e);
+    console.error('DOM Sync failed:', e);
     setStatus('connected', 'Erreur de sync');
   } finally {
     isSyncing = false;
@@ -203,32 +233,249 @@ async function triggerSync() {
   }
 }
 
-async function toggleAutoSync() {
-  const enabled = autoSync.checked;
+// =====================
+// API SYNC (new)
+// =====================
+
+async function triggerAPISync() {
+  if (isSyncing) return;
   
-  // Save config regardless of connection status
-  await saveConfig();
+  isSyncing = true;
+  setStatus('syncing', 'Sync API en cours...');
+  apiSyncBtn.disabled = true;
   
-  if (!currentTabId) {
-    console.log('No LinkedIn tab connected, config saved for later');
+  try {
+    // Fetch first batch of conversations
+    const response = await chrome.runtime.sendMessage({
+      type: 'FETCH_CONVERSATIONS',
+      start: 0,
+      count: 20,
+    });
+    
+    if (response.ok) {
+      console.log('API Sync result:', response.data);
+      
+      // Transform API data to our format
+      const conversations = transformAPIConversations(response.data.conversations);
+      
+      updateUI({
+        conversations,
+        messages: [],
+      });
+      
+      setStatus('connected', `Sync API: ${conversations.length} conversations`);
+    } else {
+      throw new Error(response.error);
+    }
+  } catch (e) {
+    console.error('API Sync failed:', e);
+    setStatus('connected', 'Erreur API: ' + e.message);
+  } finally {
+    isSyncing = false;
+    apiSyncBtn.disabled = false;
+  }
+}
+
+async function fetchAllConversations() {
+  if (isSyncing) return;
+  
+  isSyncing = true;
+  setStatus('syncing', 'Récupération de toutes les conversations...');
+  fetchAllConvBtn.disabled = true;
+  showProgress(true, 0, 'Démarrage...');
+  
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'FETCH_ALL_CONVERSATIONS',
+    });
+    
+    if (response.ok) {
+      apiConversations = response.data;
+      const conversations = transformAPIConversations(response.data);
+      
+      // Save to storage
+      await chrome.storage.local.set({ apiConversations: response.data });
+      
+      updateUI({
+        conversations,
+        messages: [],
+      });
+      
+      // Sync to CRM server if configured
+      if (apiUrl.value) {
+        await syncToServer(conversations, []);
+      }
+      
+      setStatus('connected', `✅ ${conversations.length} conversations récupérées`);
+      showProgress(false);
+    } else {
+      throw new Error(response.error);
+    }
+  } catch (e) {
+    console.error('Fetch all conversations failed:', e);
+    setStatus('connected', 'Erreur: ' + e.message);
+    showProgress(false);
+  } finally {
+    isSyncing = false;
+    fetchAllConvBtn.disabled = false;
+  }
+}
+
+async function fetchAllMessages() {
+  if (isSyncing) return;
+  
+  if (apiConversations.length === 0) {
+    alert('Récupère d\'abord les conversations !');
     return;
   }
   
+  isSyncing = true;
+  setStatus('syncing', 'Récupération de tous les messages...');
+  fetchAllMsgBtn.disabled = true;
+  
+  const allMessages = [];
+  const total = apiConversations.length;
+  
   try {
-    await chrome.tabs.sendMessage(currentTabId, {
-      type: enabled ? 'START_AUTO_SYNC' : 'STOP_AUTO_SYNC',
+    for (let i = 0; i < total; i++) {
+      const conv = apiConversations[i];
+      const convUrn = conv.entityUrn || conv['*conversation'];
+      
+      showProgress(true, Math.round((i / total) * 100), `Conversation ${i + 1}/${total}...`);
+      
+      const response = await chrome.runtime.sendMessage({
+        type: 'FETCH_ALL_MESSAGES',
+        conversationUrn: convUrn,
+      });
+      
+      if (response.ok) {
+        allMessages.push(...response.data);
+      }
+    }
+    
+    // Transform and update UI
+    const messages = transformAPIMessages(allMessages);
+    
+    updateUI({
+      conversations: transformAPIConversations(apiConversations),
+      messages,
     });
+    
+    msgCount.textContent = messages.length;
+    
+    // Sync to CRM server if configured
+    if (apiUrl.value) {
+      await syncToServer(transformAPIConversations(apiConversations), messages);
+    }
+    
+    setStatus('connected', `✅ ${messages.length} messages récupérés`);
+    showProgress(false);
   } catch (e) {
-    console.log('Tab not ready yet, config saved for later:', e.message);
-    // Don't revert the checkbox - config is saved
+    console.error('Fetch all messages failed:', e);
+    setStatus('connected', 'Erreur: ' + e.message);
+    showProgress(false);
+  } finally {
+    isSyncing = false;
+    fetchAllMsgBtn.disabled = false;
   }
 }
 
 // =====================
-// MESSAGE LISTENER
+// DATA TRANSFORMATION
+// =====================
+
+function transformAPIConversations(apiConversations) {
+  return apiConversations.map((conv, index) => {
+    // LinkedIn API structure varies, try to extract common fields
+    const participants = conv.participants || conv['*participants'] || [];
+    const lastMessage = conv.lastActivityAt || conv.lastReadAt;
+    
+    // Try to get participant info
+    let participantName = 'Unknown';
+    let participantPicture = null;
+    
+    if (conv.participantFirstNames) {
+      participantName = Object.values(conv.participantFirstNames).join(', ');
+    } else if (conv.conversationParticipants) {
+      const parts = conv.conversationParticipants;
+      participantName = parts.map(p => p.firstName || p.name).filter(Boolean).join(', ');
+    }
+    
+    return {
+      id: conv.entityUrn || conv['*conversation'] || `conv-${index}`,
+      entityUrn: conv.entityUrn,
+      name: participantName,
+      avatarUrl: participantPicture,
+      lastMessagePreview: conv.lastMessage?.body || '',
+      lastMessageTime: lastMessage ? new Date(lastMessage).toISOString() : null,
+      unreadCount: conv.unreadCount || 0,
+      isStarred: conv.starred || false,
+      raw: conv, // Keep raw data for debugging
+    };
+  });
+}
+
+function transformAPIMessages(apiMessages) {
+  return apiMessages.map((msg, index) => {
+    const fromProfile = msg['*from'] || msg.from;
+    
+    return {
+      id: msg.entityUrn || `msg-${index}`,
+      urn: msg.entityUrn,
+      content: msg.body || msg.eventContent?.body || '',
+      isFromMe: msg.fromCurrentUser || false,
+      timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : null,
+      sender: {
+        linkedinId: fromProfile,
+        name: msg.fromParticipant?.firstName || 'Unknown',
+      },
+      conversationUrn: msg['*conversation'],
+      raw: msg,
+    };
+  });
+}
+
+// =====================
+// SERVER SYNC
+// =====================
+
+async function syncToServer(conversations, messages) {
+  if (!apiUrl.value) return;
+  
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'SYNC_TO_SERVER',
+      apiUrl: apiUrl.value,
+      data: {
+        type: 'api_sync',
+        timestamp: new Date().toISOString(),
+        conversations,
+        messages,
+      },
+    });
+    
+    if (!response.ok) {
+      console.error('Server sync failed:', response.error);
+    }
+  } catch (e) {
+    console.error('Server sync error:', e);
+  }
+}
+
+// =====================
+// PROGRESS LISTENER
 // =====================
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'FETCH_PROGRESS') {
+    const { progress } = message;
+    if (progress.percent !== undefined) {
+      showProgress(true, progress.percent, `${progress.fetched}/${progress.total} conversations...`);
+    } else if (progress.fetched !== undefined) {
+      progressText.textContent = `${progress.fetched} messages...`;
+    }
+  }
+  
   if (message.type === 'SYNC_DATA') {
     updateUI(message.data);
   }
@@ -238,8 +485,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // EVENT LISTENERS
 // =====================
 
-syncBtn.addEventListener('click', triggerSync);
-autoSync.addEventListener('change', toggleAutoSync);
+syncBtn.addEventListener('click', triggerDOMSync);
+apiSyncBtn.addEventListener('click', triggerAPISync);
+fetchAllConvBtn.addEventListener('click', fetchAllConversations);
+fetchAllMsgBtn.addEventListener('click', fetchAllMessages);
+autoSync.addEventListener('change', saveConfig);
 apiUrl.addEventListener('change', saveConfig);
 apiUrl.addEventListener('blur', saveConfig);
 
