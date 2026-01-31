@@ -177,13 +177,32 @@ async function getMailboxUrn() {
   // Get current user's profile URN via /me endpoint
   try {
     const meData = await makeLinkedInRequest('/voyager/api/me');
-    // The miniProfile contains the URN
-    const profileUrn = meData.miniProfile?.entityUrn || meData.entityUrn;
-    if (profileUrn) {
+    
+    // Try multiple places where the URN might be
+    // 1. In included array (most reliable)
+    const miniProfile = meData.included?.find(item => 
+      item.$type === 'com.linkedin.voyager.identity.shared.MiniProfile'
+    );
+    
+    // 2. dashEntityUrn is the fsd_profile format we need
+    const dashUrn = miniProfile?.dashEntityUrn;
+    
+    // 3. Or convert from fs_miniProfile format
+    const fsUrn = miniProfile?.entityUrn || meData.data?.['*miniProfile'];
+    
+    if (dashUrn) {
+      mailboxUrn = dashUrn;
+    } else if (fsUrn) {
       // Convert from urn:li:fs_miniProfile to urn:li:fsd_profile
-      mailboxUrn = profileUrn.replace('fs_miniProfile', 'fsd_profile');
-      console.log('📋 Got mailbox URN:', mailboxUrn);
+      mailboxUrn = fsUrn.replace('fs_miniProfile', 'fsd_profile');
     }
+    
+    if (mailboxUrn) {
+      console.log('📋 Got mailbox URN:', mailboxUrn);
+    } else {
+      console.error('❌ Could not extract mailbox URN from:', meData);
+    }
+    
     return mailboxUrn;
   } catch (e) {
     console.error('❌ Error getting mailbox URN:', e);
