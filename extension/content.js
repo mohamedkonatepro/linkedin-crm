@@ -1,500 +1,48 @@
 /**
- * LinkedIn CRM - Content Script
- * Scrapes LinkedIn messaging and syncs with CRM
+ * LinkedIn CRM Sync - Content Script
+ * Scrapes LinkedIn Messaging DOM for conversations and messages
  */
 
-// Configuration
-const CONFIG = {
-  API_URL: '', // Will be set from popup
-  SYNC_INTERVAL: 30000, // 30 seconds
-  SCRAPE_DELAY: 500, // Delay between scraping operations
+console.log('🔌 LinkedIn CRM Content Script loaded on:', window.location.href);
+
+// Config
+let config = {
+  apiUrl: 'http://localhost:3000',
+  convLimit: 50,
+  msgLimit: 20,
 };
-
-// State
-let isInitialized = false;
-let syncInterval = null;
-let extensionValid = true;
-
-// Check if extension context is still valid
-function isExtensionValid() {
-  try {
-    // This will throw if extension was reloaded
-    chrome.runtime.getURL('');
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-// Stop all intervals when extension is invalidated
-function cleanupOnInvalidation() {
-  if (syncInterval) {
-    clearInterval(syncInterval);
-    syncInterval = null;
-  }
-  extensionValid = false;
-  console.log('LinkedIn CRM: Extension reloaded - refresh the page to reconnect');
-}
-
-// =====================
-// SELECTORS
-// =====================
-const SELECTORS = {
-  // Conversation list
-  conversationList: 'ul.msg-conversations-container__conversations-list',
-  conversationItem: 'li.msg-conversation-listitem',
-  conversationCard: 'div.msg-conversation-card',
-  participantName: 'h3.msg-conversation-listitem__participant-names span.truncate',
-  conversationTime: 'time.msg-conversation-listitem__time-stamp',
-  messagePreview: 'p.msg-conversation-card__message-snippet',
-  profileImage: 'img.presence-entity__image',
-  activeConversation: '.msg-conversations-container__convo-item-link--active',
-  starIcon: '.msg-conversation-card__star-icon',
-  
-  // Message list
-  messageList: 'ul.msg-s-message-list-content',
-  messageItem: 'li.msg-s-message-list__event',
-  messageEvent: 'div.msg-s-event-listitem',
-  messageOther: 'msg-s-event-listitem--other',
-  senderLink: 'a.msg-s-event-listitem__link',
-  senderImage: 'img.msg-s-event-listitem__profile-picture',
-  senderName: 'span.msg-s-message-group__profile-link',
-  messageTime: 'time.msg-s-message-group__timestamp',
-  dateHeader: 'time.msg-s-message-list__time-heading',
-  messageBody: 'p.msg-s-event-listitem__body',
-  messageBubble: 'div.msg-s-event-listitem__message-bubble',
-};
-
-// =====================
-// UTILITY FUNCTIONS
-// =====================
-
-function extractLinkedInId(url) {
-  if (!url) return null;
-  const match = url.match(/ACoAA[A-Za-z0-9_-]+/);
-  return match ? match[0] : null;
-}
-
-function parseLinkedInDate(dateStr) {
-  // LinkedIn uses relative dates like "16 nov. 2025", "15:03", "lundi", "hier", etc.
-  if (!dateStr) return null;
-  
-  const str = dateStr.trim().toLowerCase();
-  
-  // If it's just a time (HH:MM), assume today
-  if (/^\d{1,2}:\d{2}$/.test(str)) {
-    const [hours, minutes] = str.split(':');
-    const date = new Date();
-    date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    return date.toISOString();
-  }
-  
-  // Day names (French and English) - calculate relative date
-  const dayNames = {
-    // French
-    'lundi': 1, 'mardi': 2, 'mercredi': 3, 'jeudi': 4, 'vendredi': 5, 'samedi': 6, 'dimanche': 0,
-    // English
-    'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0,
-  };
-  
-  // Check for day name
-  for (const [dayName, dayNum] of Object.entries(dayNames)) {
-    if (str.includes(dayName)) {
-      const today = new Date();
-      const currentDay = today.getDay();
-      let daysAgo = currentDay - dayNum;
-      if (daysAgo <= 0) daysAgo += 7; // If same day or future, go back a week
-      const date = new Date(today);
-      date.setDate(date.getDate() - daysAgo);
-      date.setHours(0, 0, 0, 0);
-      return date.toISOString();
-    }
-  }
-  
-  // Check for "hier" / "yesterday"
-  if (str.includes('hier') || str.includes('yesterday')) {
-    const date = new Date();
-    date.setDate(date.getDate() - 1);
-    date.setHours(0, 0, 0, 0);
-    return date.toISOString();
-  }
-  
-  // Check for "aujourd'hui" / "today"
-  if (str.includes("aujourd'hui") || str.includes('today')) {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    return date.toISOString();
-  }
-  
-  // French and English month names
-  const months = {
-    // French (full and abbreviated)
-    'janvier': 0, 'janv': 0, 'février': 1, 'févr': 1, 'mars': 2, 'avril': 3, 'avr': 3,
-    'mai': 4, 'juin': 5, 'juillet': 6, 'juil': 6, 'août': 7, 'aout': 7,
-    'septembre': 8, 'sept': 8, 'octobre': 9, 'oct': 9, 'novembre': 10, 'nov': 10,
-    'décembre': 11, 'déc': 11, 'decembre': 11, 'dec': 11,
-    // English (full and abbreviated)
-    'january': 0, 'jan': 0, 'february': 1, 'feb': 1, 'march': 2, 'mar': 2,
-    'april': 3, 'apr': 3, 'may': 4, 'june': 5, 'jun': 5, 'july': 6, 'jul': 6,
-    'august': 7, 'aug': 7, 'september': 8, 'sep': 8, 'october': 9, 'oct': 9,
-    'november': 10, 'nov': 10, 'december': 11, 'dec': 11,
-  };
-  
-  // Parse "16 nov. 2025" (with year) - use str (trimmed)
-  const matchWithYear = str.match(/(\d{1,2})\s+(\w+)\.?\s+(\d{4})/);
-  if (matchWithYear) {
-    const [, day, monthStr, year] = matchWithYear;
-    const month = months[monthStr.replace('.', '')];
-    if (month !== undefined) {
-      return new Date(parseInt(year), month, parseInt(day)).toISOString();
-    }
-  }
-  
-  // Parse "15 janv." or "23 janv." (WITHOUT year - assume current year)
-  const matchNoYear = str.match(/(\d{1,2})\s+(\w+)\.?$/);
-  if (matchNoYear) {
-    const [, day, monthStr] = matchNoYear;
-    const month = months[monthStr.replace('.', '')];
-    if (month !== undefined) {
-      const currentYear = new Date().getFullYear();
-      return new Date(currentYear, month, parseInt(day)).toISOString();
-    }
-  }
-  
-  // Parse English format "Nov 16, 2025"
-  const matchEn = str.match(/(\w+)\.?\s+(\d{1,2}),?\s+(\d{4})/);
-  if (matchEn) {
-    const [, monthStr, day, year] = matchEn;
-    const month = months[monthStr.replace('.', '')];
-    if (month !== undefined) {
-      return new Date(parseInt(year), month, parseInt(day)).toISOString();
-    }
-  }
-  
-  // Parse English format without year "Jan 15" or "Jan. 15"
-  const matchEnNoYear = str.match(/(\w+)\.?\s+(\d{1,2})$/);
-  if (matchEnNoYear) {
-    const [, monthStr, day] = matchEnNoYear;
-    const month = months[monthStr.replace('.', '')];
-    if (month !== undefined) {
-      const currentYear = new Date().getFullYear();
-      return new Date(currentYear, month, parseInt(day)).toISOString();
-    }
-  }
-  
-  return null;
-}
-
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// =====================
-// SCRAPING FUNCTIONS
-// =====================
-
-function scrapeConversationList() {
-  const conversations = [];
-  const items = document.querySelectorAll(SELECTORS.conversationItem);
-  
-  items.forEach((item, index) => {
-    try {
-      const card = item.querySelector(SELECTORS.conversationCard);
-      if (!card) return;
-      
-      // Get profile link to extract LinkedIn ID
-      const profileLink = item.querySelector('a[href*="/in/"]');
-      const linkedinId = profileLink ? extractLinkedInId(profileLink.href) : null;
-      
-      const conversation = {
-        index,
-        linkedinId,
-        name: item.querySelector(SELECTORS.participantName)?.textContent?.trim() || 'Unknown',
-        avatarUrl: item.querySelector(SELECTORS.profileImage)?.src || null,
-        lastMessagePreview: item.querySelector(SELECTORS.messagePreview)?.textContent?.trim() || '',
-        lastMessageTime: parseLinkedInDate(
-          item.querySelector(SELECTORS.conversationTime)?.textContent
-        ),
-        isActive: !!item.querySelector(SELECTORS.activeConversation),
-        isStarred: !!item.querySelector(`${SELECTORS.starIcon}:not(:empty)`),
-        threadId: extractThreadId(item),
-      };
-      
-      // Extract if last message is from me
-      const preview = conversation.lastMessagePreview;
-      if (preview.startsWith('Vous :') || preview.startsWith('You:')) {
-        conversation.lastMessageFromMe = true;
-        conversation.lastMessagePreview = preview.replace(/^(Vous|You)\s*:\s*/, '');
-      } else if (preview.includes(' : ')) {
-        conversation.lastMessageFromMe = false;
-        conversation.lastMessagePreview = preview.split(' : ').slice(1).join(' : ');
-      }
-      
-      conversations.push(conversation);
-    } catch (e) {
-      console.error('Error scraping conversation:', e);
-    }
-  });
-  
-  return conversations;
-}
-
-function extractThreadId(item) {
-  // Try to get thread ID from data attributes or URL
-  const link = item.querySelector('a[href*="/messaging/thread/"]');
-  if (link) {
-    const match = link.href.match(/\/thread\/([^/]+)/);
-    return match ? match[1] : null;
-  }
-  return null;
-}
-
-function scrapeMessages() {
-  const messages = [];
-  const items = document.querySelectorAll(SELECTORS.messageItem);
-  let currentDate = null;
-  
-  items.forEach((item, index) => {
-    try {
-      // Check for date header - prefer datetime attribute
-      const dateHeader = item.querySelector(SELECTORS.dateHeader);
-      if (dateHeader) {
-        // First try datetime attribute
-        const datetimeAttr = dateHeader.getAttribute('datetime');
-        if (datetimeAttr) {
-          currentDate = datetimeAttr;
-        } else {
-          currentDate = parseLinkedInDate(dateHeader.textContent);
-        }
-      }
-      
-      const event = item.querySelector(SELECTORS.messageEvent);
-      if (!event) return;
-      
-      // Get message URN from data attribute
-      const urn = event.dataset.eventUrn;
-      if (!urn) return;
-      
-      // Determine if message is from me
-      const isFromMe = !event.classList.contains(SELECTORS.messageOther);
-      
-      // Get sender info
-      const senderLink = item.querySelector(SELECTORS.senderLink);
-      const senderId = senderLink ? extractLinkedInId(senderLink.href) : null;
-      const senderName = item.querySelector(SELECTORS.senderName)?.textContent?.trim();
-      const senderAvatar = item.querySelector(SELECTORS.senderImage)?.src;
-      
-      // Get message content
-      const content = item.querySelector(SELECTORS.messageBody)?.textContent?.trim() || '';
-      
-      // Get time - try multiple sources
-      const timeElement = item.querySelector(SELECTORS.messageTime);
-      let timestamp = null;
-      
-      // First try: look for tooltip/label with full date (e.g., "Envoyé le 11/11/2025, 15:34")
-      // This appears on sent messages in title attribute or text content
-      let tooltipMatch = null;
-      const allElements = item.querySelectorAll('div, span');
-      for (const el of allElements) {
-        // Check title attribute (most common for sent indicator)
-        const title = el.getAttribute('title') || '';
-        const titleMatch = title.match(/Envoyé le (\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})/);
-        if (titleMatch) {
-          tooltipMatch = titleMatch;
-          break;
-        }
-        // Also check textContent and aria-label
-        const text = el.textContent || el.getAttribute('aria-label') || '';
-        const textMatch = text.match(/Envoyé le (\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})/);
-        if (textMatch) {
-          tooltipMatch = textMatch;
-          break;
-        }
-      }
-      
-      if (tooltipMatch) {
-        const [, day, month, year, hours, minutes] = tooltipMatch;
-        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
-        timestamp = date.toISOString();
-      }
-      // Second try: use datetime attribute
-      else if (timeElement?.getAttribute('datetime')) {
-        timestamp = timeElement.getAttribute('datetime');
-      }
-      // Third try: combine currentDate with time string
-      else if (timeElement) {
-        const timeStr = timeElement.textContent?.replace('•', '').trim();
-        if (currentDate && timeStr) {
-          const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
-          if (timeMatch) {
-            const [, hours, minutes] = timeMatch;
-            const date = new Date(currentDate);
-            date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-            timestamp = date.toISOString();
-          }
-        }
-      }
-      
-      const message = {
-        index,
-        urn,
-        content,
-        isFromMe,
-        timestamp,
-        sender: {
-          linkedinId: senderId,
-          name: senderName,
-          avatarUrl: senderAvatar,
-        },
-      };
-      
-      messages.push(message);
-    } catch (e) {
-      console.error('Error scraping message:', e);
-    }
-  });
-  
-  return messages;
-}
-
-function getCurrentConversationInfo() {
-  // Get info about the currently open conversation
-  const header = document.querySelector('.msg-entity-lockup__entity-title');
-  const subtitle = document.querySelector('.msg-entity-lockup__entity-subtitle');
-  const profileLink = document.querySelector('.msg-thread__link-to-profile');
-  
-  return {
-    name: header?.textContent?.trim(),
-    headline: subtitle?.textContent?.trim(),
-    linkedinId: profileLink ? extractLinkedInId(profileLink.href) : null,
-    profileUrl: profileLink?.href,
-  };
-}
-
-// =====================
-// SYNC FUNCTIONS
-// =====================
-
-async function syncToServer(data) {
-  if (!CONFIG.API_URL) {
-    console.log('LinkedIn CRM: No API URL configured');
-    return;
-  }
-
-  try {
-    // Clean URL (remove trailing slash)
-    const baseUrl = CONFIG.API_URL.replace(/\/+$/, '');
-
-    // Use background script to bypass mixed content restrictions (HTTPS -> HTTP)
-    const response = await chrome.runtime.sendMessage({
-      type: 'API_REQUEST',
-      url: `${baseUrl}/api/sync`,
-      method: 'POST',
-      body: data,
-    });
-
-    if (!response || !response.ok) {
-      throw new Error(response?.error || 'Sync failed');
-    }
-
-    console.log('LinkedIn CRM: Sync success via background', response.data);
-    return response.data;
-  } catch (e) {
-    console.error('LinkedIn CRM: Sync error', e);
-    throw e;
-  }
-}
-
-async function performFullSync() {
-  // Check if extension is still valid
-  if (!isExtensionValid()) {
-    cleanupOnInvalidation();
-    return null;
-  }
-  
-  console.log('LinkedIn CRM: Starting full sync...');
-  
-  const conversations = scrapeConversationList();
-  const currentConversation = getCurrentConversationInfo();
-  const messages = scrapeMessages();
-  
-  const data = {
-    type: 'full',
-    timestamp: new Date().toISOString(),
-    conversations,
-    currentConversation,
-    messages,
-  };
-  
-  // Send to popup for display (wrapped in try-catch to handle extension reload)
-  try {
-    chrome.runtime.sendMessage({
-      type: 'SYNC_DATA',
-      data,
-    });
-  } catch (e) {
-    // Extension context invalidated - ignore (happens after extension reload)
-    console.log('LinkedIn CRM: Extension reloaded, refresh page to reconnect');
-  }
-  
-  // If API is configured, sync to server
-  if (CONFIG.API_URL) {
-    await syncToServer(data);
-  }
-  
-  console.log('LinkedIn CRM: Sync complete', {
-    conversations: conversations.length,
-    messages: messages.length,
-  });
-  
-  return data;
-}
 
 // =====================
 // MESSAGE HANDLERS
 // =====================
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('LinkedIn CRM: Received message', message);
+  console.log('📨 Content script received:', message.type);
   
   switch (message.type) {
     case 'PING':
-      sendResponse({ ok: true, page: 'messaging' });
+      sendResponse({ ok: true, url: window.location.href });
       break;
       
-    case 'GET_CONVERSATIONS':
-      sendResponse({ conversations: scrapeConversationList() });
+    case 'CHECK_IFRAME':
+      // Check if there's a LinkedIn iframe on this page
+      const iframe = document.querySelector('iframe[src*="linkedin.com/messaging"]');
+      sendResponse({ hasIframe: !!iframe });
       break;
       
-    case 'GET_MESSAGES':
-      sendResponse({ messages: scrapeMessages() });
+    case 'SET_CONFIG':
+      config = { ...config, ...message.config };
+      sendResponse({ ok: true });
       break;
       
     case 'FULL_SYNC':
-      performFullSync().then(data => sendResponse(data));
-      return true; // Keep channel open for async response
-      
-    case 'SET_CONFIG':
-      Object.assign(CONFIG, message.config);
-      sendResponse({ ok: true });
-      break;
-      
-    case 'START_AUTO_SYNC':
-      if (!syncInterval) {
-        syncInterval = setInterval(performFullSync, CONFIG.SYNC_INTERVAL);
-        console.log('LinkedIn CRM: Auto-sync started');
+      if (message.config) {
+        config = { ...config, ...message.config };
       }
-      sendResponse({ ok: true });
-      break;
-      
-    case 'STOP_AUTO_SYNC':
-      if (syncInterval) {
-        clearInterval(syncInterval);
-        syncInterval = null;
-        console.log('LinkedIn CRM: Auto-sync stopped');
-      }
-      sendResponse({ ok: true });
-      break;
+      performFullSync()
+        .then(result => sendResponse(result))
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true; // Keep channel open for async
       
     default:
       sendResponse({ error: 'Unknown message type' });
@@ -502,428 +50,294 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // =====================
-// OBSERVERS
+// DOM SCRAPING
 // =====================
 
-// Watch for new messages
-function setupMessageObserver() {
-  const messageList = document.querySelector(SELECTORS.messageList);
-  if (!messageList) return;
-  
-  const observer = new MutationObserver((mutations) => {
-    // Debounce: only trigger once per batch of mutations
-    clearTimeout(observer.debounceTimer);
-    observer.debounceTimer = setTimeout(async () => {
-      console.log('LinkedIn CRM: Messages changed, syncing...');
-      const result = await performFullSync();
-      
-      // Check for new messages and notify
-      checkForNewMessages();
-      
-      // Also notify parent window of the sync
-      window.postMessage({
-        source: 'linkedin-crm-extension',
-        type: 'REALTIME_SYNC',
-        data: result
-      }, '*');
-    }, 1000);
-  });
-  
-  observer.observe(messageList, {
-    childList: true,
-    subtree: true,
-  });
-  
-  console.log('LinkedIn CRM: Message observer active');
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Watch for conversation list changes
-function setupConversationObserver() {
-  const conversationList = document.querySelector(SELECTORS.conversationList);
-  if (!conversationList) return;
-  
-  const observer = new MutationObserver((mutations) => {
-    clearTimeout(observer.debounceTimer);
-    observer.debounceTimer = setTimeout(() => {
-      console.log('LinkedIn CRM: Conversations changed, syncing...');
-      performFullSync();
-    }, 1000);
+function sendProgress(current, total, phase) {
+  chrome.runtime.sendMessage({
+    type: 'SYNC_PROGRESS',
+    current,
+    total,
+    phase,
   });
-  
-  observer.observe(conversationList, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class'],
-  });
-  
-  console.log('LinkedIn CRM: Conversation observer active');
 }
 
-// =====================
-// INITIALIZATION
-// =====================
-
-function initialize() {
-  if (isInitialized) return;
+async function performFullSync() {
+  console.log('🔄 Starting full sync with config:', config);
   
-  console.log('LinkedIn CRM: Initializing content script...');
-  
-  // Wait for page to be ready
-  const checkReady = setInterval(() => {
-    const conversationList = document.querySelector(SELECTORS.conversationList);
-    if (conversationList) {
-      clearInterval(checkReady);
-      
-      // Setup observers
-      setupConversationObserver();
-      setupMessageObserver();
-      
-      // Initial sync
-      performFullSync();
-      
-      isInitialized = true;
-      console.log('LinkedIn CRM: Initialized successfully');
-    }
-  }, 500);
-  
-  // Timeout after 30 seconds
-  setTimeout(() => clearInterval(checkReady), 30000);
-}
-
-// Start when page loads
-if (document.readyState === 'complete') {
-  initialize();
-} else {
-  window.addEventListener('load', initialize);
-}
-
-// Also try to initialize on URL changes (SPA navigation)
-let lastUrl = location.href;
-new MutationObserver(() => {
-  if (location.href !== lastUrl) {
-    lastUrl = location.href;
-    if (location.href.includes('/messaging')) {
-      isInitialized = false;
-      setTimeout(initialize, 1000);
-    }
-  }
-}).observe(document, { subtree: true, childList: true });
-
-console.log('LinkedIn CRM: Content script loaded');
-
-// =====================
-// PAGE API (for testing without popup)
-// =====================
-
-// Listen for messages from the page
-window.addEventListener('message', async (event) => {
-  if (event.source !== window) return;
-  if (!event.data || event.data.source !== 'linkedin-crm-test') return;
-  
-  console.log('LinkedIn CRM: Received page message:', event.data.type);
-  
-  switch (event.data.type) {
-    case 'TRIGGER_DOM_SYNC':
-      const domResult = await performFullSync();
-      window.postMessage({
-        source: 'linkedin-crm-extension',
-        type: 'DOM_SYNC_RESULT',
-        data: domResult
-      }, '*');
-      break;
-      
-    case 'TRIGGER_API_SYNC':
-      console.log('LinkedIn CRM: Triggering API sync...');
-      chrome.runtime.sendMessage({ type: 'FETCH_ALL_CONVERSATIONS' }, (apiResult) => {
-        console.log('LinkedIn CRM: Got API sync response:', apiResult);
-        if (chrome.runtime.lastError) {
-          console.error('LinkedIn CRM: API sync error:', chrome.runtime.lastError);
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'API_SYNC_ERROR',
-            error: chrome.runtime.lastError.message
-          }, '*');
-        } else if (apiResult?.ok) {
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'API_SYNC_RESULT',
-            data: apiResult
-          }, '*');
-        } else {
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'API_SYNC_ERROR',
-            error: apiResult?.error || 'Unknown error'
-          }, '*');
-        }
-      });
-      break;
-      
-    case 'GET_QUERY_IDS':
-      console.log('LinkedIn CRM: Requesting queryIds from background...');
-      chrome.runtime.sendMessage({ type: 'GET_QUERY_IDS' }, (queryIds) => {
-        console.log('LinkedIn CRM: Got queryIds response:', queryIds);
-        if (chrome.runtime.lastError) {
-          console.error('LinkedIn CRM: sendMessage error:', chrome.runtime.lastError);
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'QUERY_IDS_ERROR',
-            error: chrome.runtime.lastError.message
-          }, '*');
-        } else {
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'QUERY_IDS_RESULT',
-            data: queryIds
-          }, '*');
-        }
-      });
-      break;
-      
-    case 'SET_CONFIG':
-      Object.assign(CONFIG, event.data.config);
-      window.postMessage({
-        source: 'linkedin-crm-extension',
-        type: 'CONFIG_SET',
-        data: CONFIG
-      }, '*');
-      break;
-      
-    case 'SEND_MESSAGE':
-      console.log('LinkedIn CRM: Sending message...', event.data.text);
-      sendMessageToLinkedIn(event.data.text)
-        .then(result => {
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'SEND_MESSAGE_RESULT',
-            data: result
-          }, '*');
-        })
-        .catch(err => {
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'SEND_MESSAGE_ERROR',
-            error: err.message
-          }, '*');
-        });
-      break;
-      
-    case 'CLICK_CONVERSATION':
-      console.log('LinkedIn CRM: Clicking conversation...', event.data.index);
-      clickConversation(event.data.index)
-        .then(result => {
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'CLICK_CONVERSATION_RESULT',
-            data: result
-          }, '*');
-        })
-        .catch(err => {
-          window.postMessage({
-            source: 'linkedin-crm-extension',
-            type: 'CLICK_CONVERSATION_ERROR',
-            error: err.message
-          }, '*');
-        });
-      break;
-  }
-});
-
-// =====================
-// SEND MESSAGE FUNCTION
-// =====================
-
-async function sendMessageToLinkedIn(text) {
-  if (!text || text.trim() === '') {
-    throw new Error('Message text is empty');
-  }
-  
-  console.log('LinkedIn CRM: Looking for input field...');
-  
-  // Find the message input field - try multiple selectors
-  const inputSelectors = [
-    'div.msg-form__contenteditable[contenteditable="true"]',
-    'div[data-placeholder*="message"]',
-    'div[data-placeholder*="Message"]',
-    'div[data-placeholder*="Rédigez"]',
-    'div.msg-form__msg-content-container div[contenteditable="true"]',
-    '.msg-form__contenteditable',
-    'div[contenteditable="true"][role="textbox"]',
-    '.msg-form__message-texteditor div[contenteditable="true"]',
-    'form.msg-form div[contenteditable="true"]'
-  ];
-  
-  let inputField = null;
-  for (const selector of inputSelectors) {
-    inputField = document.querySelector(selector);
-    if (inputField) {
-      console.log('LinkedIn CRM: Found input with selector:', selector);
-      break;
+  // Make sure we're on LinkedIn Messaging
+  if (!window.location.href.includes('linkedin.com/messaging')) {
+    // Try to find the messaging page or navigate to it
+    const messagingLink = document.querySelector('a[href*="/messaging"]');
+    if (messagingLink) {
+      messagingLink.click();
+      await delay(2000);
     }
   }
   
-  if (!inputField) {
-    // Try to find any contenteditable in the message form area
-    const form = document.querySelector('.msg-form, form[class*="msg"]');
-    if (form) {
-      inputField = form.querySelector('div[contenteditable="true"]');
+  // Wait for conversation list to load
+  await waitForElement('.msg-conversations-container__conversations-list, .msg-conversation-listitem');
+  
+  // Scrape conversations
+  const conversations = await scrapeConversations(config.convLimit);
+  console.log(`📬 Scraped ${conversations.length} conversations`);
+  
+  // Scrape messages from each conversation
+  let totalMessages = 0;
+  for (let i = 0; i < conversations.length; i++) {
+    sendProgress(i + 1, conversations.length, 'messages');
+    
+    try {
+      const messages = await scrapeMessagesForConversation(conversations[i], config.msgLimit);
+      conversations[i].messages = messages;
+      totalMessages += messages.length;
+      console.log(`💬 Conv ${i + 1}: ${messages.length} messages`);
+    } catch (e) {
+      console.error(`❌ Error scraping messages for conv ${i}:`, e);
+      conversations[i].messages = [];
+    }
+    
+    // Small delay between conversations
+    await delay(300);
+  }
+  
+  // Send to CRM server
+  if (config.apiUrl) {
+    try {
+      await syncToServer(conversations);
+      console.log('✅ Synced to server');
+    } catch (e) {
+      console.error('❌ Server sync failed:', e);
     }
   }
   
-  if (!inputField) {
-    throw new Error('Message input field not found. Make sure a conversation is open.');
+  return {
+    ok: true,
+    conversations,
+    totalMessages,
+  };
+}
+
+async function waitForElement(selector, timeout = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const el = document.querySelector(selector);
+    if (el) return el;
+    await delay(200);
   }
+  throw new Error(`Element not found: ${selector}`);
+}
+
+async function scrapeConversations(limit) {
+  const conversations = [];
+  const convItems = document.querySelectorAll('.msg-conversation-listitem, .msg-conversations-container__conversations-list li');
   
-  // Focus the input
-  inputField.focus();
-  await delay(200);
+  const total = Math.min(convItems.length, limit);
   
-  // Clear existing content
-  inputField.innerHTML = '';
-  inputField.textContent = '';
-  
-  // Insert text using different methods
-  // Method 1: execCommand
-  document.execCommand('insertText', false, text);
-  
-  // Method 2: Set directly if execCommand didn't work
-  if (!inputField.textContent.includes(text)) {
-    inputField.textContent = text;
-  }
-  
-  // Method 3: Create a text node
-  if (!inputField.textContent.includes(text)) {
-    inputField.appendChild(document.createTextNode(text));
-  }
-  
-  // Trigger input events to notify LinkedIn
-  const inputEvent = new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' });
-  inputField.dispatchEvent(inputEvent);
-  inputField.dispatchEvent(new Event('change', { bubbles: true }));
-  inputField.dispatchEvent(new Event('keyup', { bubbles: true }));
-  
-  console.log('LinkedIn CRM: Text inserted, looking for send button...');
-  
-  // Wait a bit for LinkedIn to process and enable send button
-  await delay(800);
-  
-  // Find send button - try multiple approaches
-  const sendButtonSelectors = [
-    'button.msg-form__send-button',
-    'button.msg-form__send-btn',
-    'button[type="submit"].msg-form__send-button',
-    '.msg-form__send-button',
-    'button.msg-form__right-actions-send-button',
-    'form.msg-form button[type="submit"]'
-  ];
-  
-  let sendButton = null;
-  for (const selector of sendButtonSelectors) {
-    const btn = document.querySelector(selector);
-    if (btn) {
-      console.log('LinkedIn CRM: Found button with selector:', selector, 'disabled:', btn.disabled);
-      if (!btn.disabled) {
-        sendButton = btn;
-        break;
+  for (let i = 0; i < total; i++) {
+    sendProgress(i + 1, total, 'conversations');
+    
+    const item = convItems[i];
+    if (!item) continue;
+    
+    try {
+      // Click on conversation to get more details
+      item.click();
+      await delay(500);
+      
+      const conv = extractConversationData(item);
+      if (conv) {
+        // Get thread ID from URL
+        const urlMatch = window.location.href.match(/thread\/([^/]+)/);
+        conv.threadId = urlMatch ? urlMatch[1] : null;
+        
+        conversations.push(conv);
       }
+    } catch (e) {
+      console.error('Error extracting conversation:', e);
     }
   }
   
-  // Try to find button by text content
-  if (!sendButton) {
-    const allButtons = document.querySelectorAll('button');
-    for (const btn of allButtons) {
-      const btnText = btn.textContent.toLowerCase();
-      if ((btnText.includes('envoyer') || btnText.includes('send')) && !btn.disabled) {
-        console.log('LinkedIn CRM: Found send button by text');
-        sendButton = btn;
-        break;
-      }
-    }
-  }
-  
-  if (!sendButton) {
-    // List all buttons for debugging
-    const debugButtons = document.querySelectorAll('.msg-form button, form[class*="msg"] button');
-    console.log('LinkedIn CRM: Available buttons:', debugButtons.length);
-    debugButtons.forEach((btn, i) => {
-      console.log(`  Button ${i}: class="${btn.className}" disabled=${btn.disabled} text="${btn.textContent.substring(0, 30)}"`);
-    });
-    throw new Error('Send button not found or all buttons are disabled');
-  }
-  
-  // Click send
-  console.log('LinkedIn CRM: Clicking send button...');
-  sendButton.click();
-  
-  console.log('LinkedIn CRM: Message sent!');
-  
-  // Wait for message to be sent
-  await delay(1500);
-  
-  // Trigger a sync to update the message list
-  await performFullSync();
-  
-  return { success: true, text };
+  return conversations;
 }
 
-// =====================
-// CLICK CONVERSATION FUNCTION
-// =====================
+function extractConversationData(item) {
+  // Get participant name
+  const nameEl = item.querySelector(
+    '.msg-conversation-listitem__participant-names, ' +
+    '.msg-conversation-card__participant-names, ' +
+    'h3'
+  );
+  const name = nameEl?.textContent?.trim() || 'Unknown';
+  
+  // Get avatar
+  const avatarEl = item.querySelector('img.presence-entity__image, img.msg-facepile-grid__img');
+  const avatarUrl = avatarEl?.src || null;
+  
+  // Get last message preview
+  const previewEl = item.querySelector(
+    '.msg-conversation-listitem__message-snippet, ' +
+    '.msg-conversation-card__message-snippet, ' +
+    'p'
+  );
+  const lastMessagePreview = previewEl?.textContent?.trim() || '';
+  
+  // Get timestamp
+  const timeEl = item.querySelector('time');
+  const lastMessageTime = timeEl?.getAttribute('datetime') || timeEl?.textContent || null;
+  
+  // Check if unread
+  const isUnread = item.classList.contains('msg-conversation-listitem--unread') ||
+                   item.querySelector('.msg-conversation-listitem__unread-count') !== null;
+  
+  // Check if starred
+  const isStarred = item.querySelector('.msg-conversation-listitem__starred-icon') !== null;
+  
+  // Get LinkedIn ID from profile link
+  const profileLink = document.querySelector('.msg-thread__link-to-profile, .msg-s-message-group__profile-link');
+  const linkedinId = profileLink?.href?.match(/\/in\/([^/]+)/)?.[1] || null;
+  
+  return {
+    name,
+    avatarUrl,
+    lastMessagePreview,
+    lastMessageTime,
+    isUnread,
+    isStarred,
+    linkedinId,
+  };
+}
 
-async function clickConversation(index) {
-  const conversations = document.querySelectorAll(SELECTORS.conversationItem);
-  
-  if (index < 0 || index >= conversations.length) {
-    throw new Error(`Conversation index ${index} out of range (0-${conversations.length - 1})`);
-  }
-  
-  const conv = conversations[index];
-  conv.click();
+async function scrapeMessagesForConversation(conv, limit) {
+  const messages = [];
   
   // Wait for messages to load
-  await delay(1500);
+  await delay(500);
   
-  // Sync to get new messages
-  const result = await performFullSync();
+  const messageEls = document.querySelectorAll(
+    '.msg-s-event-listitem, ' +
+    '.msg-s-message-list__event'
+  );
   
-  return { success: true, index, messages: result?.messages?.length || 0 };
-}
-
-// =====================
-// REAL-TIME UPDATES
-// =====================
-
-// Notify parent window when new messages arrive
-function notifyNewMessages(data) {
-  window.postMessage({
-    source: 'linkedin-crm-extension',
-    type: 'NEW_MESSAGES',
-    data: data
-  }, '*');
-}
-
-// Enhanced message observer for real-time updates
-let lastMessageCount = 0;
-function checkForNewMessages() {
-  const messages = scrapeMessages();
-  if (messages.length > lastMessageCount && lastMessageCount > 0) {
-    console.log('LinkedIn CRM: New messages detected!', messages.length - lastMessageCount);
-    notifyNewMessages({
-      newCount: messages.length - lastMessageCount,
-      messages: messages.slice(-5) // Last 5 messages
-    });
+  const total = Math.min(messageEls.length, limit);
+  
+  // Get messages (most recent first)
+  for (let i = Math.max(0, messageEls.length - total); i < messageEls.length; i++) {
+    const msgEl = messageEls[i];
+    if (!msgEl) continue;
+    
+    try {
+      const msg = extractMessageData(msgEl);
+      if (msg && msg.content) {
+        messages.push(msg);
+      }
+    } catch (e) {
+      console.error('Error extracting message:', e);
+    }
   }
-  lastMessageCount = messages.length;
+  
+  return messages;
 }
 
-// Expose extension ID for debugging
-try {
-  window.__linkedinCrmExtensionId = chrome.runtime.id;
-  console.log('LinkedIn CRM: Extension ID exposed:', chrome.runtime.id);
-} catch (e) {
-  // Ignore
+function extractMessageData(msgEl) {
+  // Get message content
+  const contentEl = msgEl.querySelector(
+    '.msg-s-event-listitem__body, ' +
+    '.msg-s-message-group__content, ' +
+    'p.msg-s-event-listitem__message-body'
+  );
+  const content = contentEl?.textContent?.trim() || '';
+  
+  // Get sender name
+  const senderEl = msgEl.querySelector(
+    '.msg-s-message-group__name, ' +
+    '.msg-s-event-listitem__sender-name'
+  );
+  const senderName = senderEl?.textContent?.trim() || null;
+  
+  // Get timestamp
+  const timeEl = msgEl.querySelector('time');
+  const timestamp = timeEl?.getAttribute('datetime') || timeEl?.textContent || null;
+  
+  // Check if from me (sent messages have different styling)
+  const isFromMe = msgEl.classList.contains('msg-s-event-listitem--outgoing') ||
+                   msgEl.querySelector('.msg-s-event-listitem__icon--sent') !== null ||
+                   msgEl.textContent?.includes('Envoyé') ||
+                   msgEl.querySelector('[data-test-message-sent-indicator]') !== null;
+  
+  // Get message URN if available
+  const urn = msgEl.getAttribute('data-event-urn') || null;
+  
+  return {
+    content,
+    senderName,
+    timestamp,
+    isFromMe,
+    urn,
+  };
 }
 
-console.log('LinkedIn CRM: Page API ready - use window.postMessage to test');
+// =====================
+// SERVER SYNC
+// =====================
+
+async function syncToServer(conversations) {
+  const data = {
+    type: 'dom_sync',
+    timestamp: new Date().toISOString(),
+    conversations: conversations.map(conv => ({
+      threadId: conv.threadId,
+      linkedinId: conv.linkedinId,
+      name: conv.name,
+      avatarUrl: conv.avatarUrl,
+      lastMessagePreview: conv.lastMessagePreview,
+      lastMessageTime: conv.lastMessageTime,
+      isUnread: conv.isUnread,
+      isStarred: conv.isStarred,
+      isActive: false,
+    })),
+    messages: conversations.flatMap(conv => 
+      (conv.messages || []).map(msg => ({
+        conversationId: conv.threadId,
+        content: msg.content,
+        isFromMe: msg.isFromMe,
+        timestamp: msg.timestamp,
+        urn: msg.urn,
+        sender: {
+          name: msg.senderName,
+        },
+      }))
+    ),
+    currentConversation: null,
+  };
+  
+  console.log('📤 Sending to server:', config.apiUrl, data);
+  
+  // Use background script to make the request (avoids CORS issues)
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({
+      type: 'SYNC_TO_SERVER',
+      apiUrl: config.apiUrl,
+      data,
+    }, response => {
+      if (response?.ok) {
+        resolve(response.result);
+      } else {
+        reject(new Error(response?.error || 'Server sync failed'));
+      }
+    });
+  });
+}
+
+// =====================
+// AUTO-INIT
+// =====================
+
+// If we're on LinkedIn Messaging, set up observers for real-time updates
+if (window.location.href.includes('linkedin.com/messaging')) {
+  console.log('📍 On LinkedIn Messaging - ready for sync');
+}

@@ -1,85 +1,55 @@
 /**
- * LinkedIn CRM - Popup Script
- * Handles UI and communication with background script
+ * LinkedIn CRM Sync - Popup Script (Simplified)
+ * Single button to sync conversations via DOM scraping
  */
 
 // Elements
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const syncBtn = document.getElementById('syncBtn');
-const apiSyncBtn = document.getElementById('apiSyncBtn');
-const fetchAllConvBtn = document.getElementById('fetchAllConvBtn');
-const fetchAllMsgBtn = document.getElementById('fetchAllMsgBtn');
+const syncBtnText = document.getElementById('syncBtnText');
 const apiUrl = document.getElementById('apiUrl');
-const autoSync = document.getElementById('autoSync');
+const convLimit = document.getElementById('convLimit');
+const msgLimit = document.getElementById('msgLimit');
 const convCount = document.getElementById('convCount');
 const msgCount = document.getElementById('msgCount');
-const conversationList = document.getElementById('conversationList');
 const lastSync = document.getElementById('lastSync');
 const progressBar = document.getElementById('progressBar');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
 
 // State
-let isConnected = false;
 let isSyncing = false;
-let currentTabId = null;
-let apiConversations = [];
+let linkedInTabId = null;
 
 // =====================
 // STORAGE
 // =====================
 
 async function loadConfig() {
-  const result = await chrome.storage.local.get(['apiUrl', 'autoSync', 'lastSyncData', 'lastSyncTime', 'apiConversations', 'discoveredQueryIds']);
+  const result = await chrome.storage.local.get([
+    'apiUrl', 'convLimit', 'msgLimit', 'lastSyncTime', 'lastStats'
+  ]);
   
-  if (result.apiUrl) {
-    apiUrl.value = result.apiUrl;
-  }
+  if (result.apiUrl) apiUrl.value = result.apiUrl;
+  if (result.convLimit) convLimit.value = result.convLimit;
+  if (result.msgLimit) msgLimit.value = result.msgLimit;
   
-  if (result.autoSync) {
-    autoSync.checked = result.autoSync;
-  }
-  
-  if (result.lastSyncData) {
-    updateUI(result.lastSyncData);
+  if (result.lastStats) {
+    convCount.textContent = result.lastStats.conversations || 0;
+    msgCount.textContent = result.lastStats.messages || 0;
   }
   
   if (result.lastSyncTime) {
-    lastSync.textContent = formatTime(new Date(result.lastSyncTime));
-  }
-  
-  if (result.apiConversations) {
-    apiConversations = result.apiConversations;
-    updateConversationCount();
-  }
-  
-  // Check queryIds status
-  updateQueryIdStatus(result.discoveredQueryIds);
-}
-
-function updateQueryIdStatus(queryIds) {
-  const statusEl = document.getElementById('queryIdStatus');
-  const textEl = document.getElementById('queryIdText');
-  
-  if (!queryIds || !queryIds.conversations || !queryIds.messages) {
-    statusEl.style.display = 'block';
-    statusEl.style.background = '#fef3c7';
-    textEl.textContent = '⚠️ QueryIds non capturés. Navigue sur LinkedIn Messaging et ouvre une conversation.';
-  } else {
-    // QueryIds are captured - show success briefly or hide
-    statusEl.style.display = 'block';
-    statusEl.style.background = '#dcfce7';
-    textEl.textContent = '✅ QueryIds capturés automatiquement';
-    // Hide after 3 seconds
-    setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+    lastSync.textContent = `Dernière sync: ${formatTime(new Date(result.lastSyncTime))}`;
   }
 }
 
 async function saveConfig() {
   await chrome.storage.local.set({
     apiUrl: apiUrl.value,
-    autoSync: autoSync.checked,
+    convLimit: parseInt(convLimit.value) || 50,
+    msgLimit: parseInt(msgLimit.value) || 20,
   });
 }
 
@@ -91,12 +61,11 @@ function setStatus(status, text) {
   statusDot.className = 'status-dot';
   if (status === 'connected') {
     statusDot.classList.add('connected');
-    isConnected = true;
     syncBtn.disabled = false;
   } else if (status === 'syncing') {
     statusDot.classList.add('syncing');
+    syncBtn.disabled = true;
   } else {
-    isConnected = false;
     syncBtn.disabled = true;
   }
   statusText.textContent = text;
@@ -114,50 +83,6 @@ function showProgress(show, percent = 0, text = 'Chargement...') {
   }
 }
 
-function updateConversationCount() {
-  convCount.textContent = apiConversations.length || 0;
-}
-
-function updateUI(data) {
-  // Update counts
-  convCount.textContent = data.conversations?.length || apiConversations.length || 0;
-  msgCount.textContent = data.messages?.length || 0;
-  
-  // Update conversation list
-  const conversations = data.conversations || [];
-  if (conversations.length > 0) {
-    conversationList.innerHTML = conversations.slice(0, 5).map(conv => `
-      <div class="conversation-item">
-        <img 
-          class="conversation-avatar" 
-          src="${conv.avatarUrl || conv.participantProfilePicture || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'}" 
-          alt=""
-          onerror="this.style.display='none'"
-        >
-        <div class="conversation-info">
-          <div class="conversation-name">${escapeHtml(conv.name || conv.participantName || 'Unknown')}</div>
-          <div class="conversation-preview">${escapeHtml(conv.lastMessagePreview || conv.lastMessage || '')}</div>
-        </div>
-      </div>
-    `).join('');
-  } else {
-    conversationList.innerHTML = `
-      <div class="empty-state">
-        <p>Aucune conversation synchronisée</p>
-      </div>
-    `;
-  }
-  
-  // Update last sync time
-  lastSync.textContent = formatTime(new Date());
-  
-  // Save to storage
-  chrome.storage.local.set({
-    lastSyncData: data,
-    lastSyncTime: new Date().toISOString(),
-  });
-}
-
 function formatTime(date) {
   return date.toLocaleTimeString('fr-FR', {
     hour: '2-digit',
@@ -165,354 +90,142 @@ function formatTime(date) {
   });
 }
 
-function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 // =====================
-// DOM SYNC (existing)
+// CONNECTION CHECK
 // =====================
 
-async function getLinkedInTab() {
-  const tabs = await chrome.tabs.query({
+async function findLinkedInTab() {
+  // First, try to find a LinkedIn messaging tab (direct)
+  let tabs = await chrome.tabs.query({
     url: 'https://www.linkedin.com/messaging/*',
-    active: true,
-    currentWindow: true,
   });
   
   if (tabs.length > 0) {
-    return tabs[0];
+    return { tab: tabs[0], type: 'direct' };
   }
   
-  // Try any messaging tab
-  const allTabs = await chrome.tabs.query({
-    url: 'https://www.linkedin.com/messaging/*',
+  // Next, try to find CRM page with iframe
+  tabs = await chrome.tabs.query({
+    url: ['http://localhost:3000/*', 'http://127.0.0.1:3000/*', 'https://*.vercel.app/*'],
   });
   
-  return allTabs[0] || null;
+  for (const tab of tabs) {
+    // Check if this tab has a LinkedIn iframe
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { type: 'CHECK_IFRAME' });
+      if (response?.hasIframe) {
+        return { tab, type: 'iframe' };
+      }
+    } catch (e) {
+      // Content script not loaded, continue
+    }
+  }
+  
+  // Finally, any LinkedIn tab
+  tabs = await chrome.tabs.query({
+    url: 'https://www.linkedin.com/*',
+  });
+  
+  if (tabs.length > 0) {
+    return { tab: tabs[0], type: 'linkedin' };
+  }
+  
+  return null;
 }
 
 async function checkConnection() {
-  const tab = await getLinkedInTab();
+  const result = await findLinkedInTab();
   
-  if (!tab) {
-    setStatus('disconnected', 'Ouvre LinkedIn Messaging');
-    currentTabId = null;
+  if (!result) {
+    setStatus('disconnected', 'Ouvre LinkedIn ou le CRM');
+    linkedInTabId = null;
     return false;
   }
   
-  currentTabId = tab.id;
+  linkedInTabId = result.tab.id;
   
-  try {
-    const response = await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
-    if (response?.ok) {
-      setStatus('connected', 'Connecté à LinkedIn');
-      return true;
-    }
-  } catch (e) {
-    console.log('Connection check failed:', e.message);
+  if (result.type === 'iframe') {
+    setStatus('connected', 'CRM + iframe détecté ✓');
+    return true;
   }
   
-  setStatus('disconnected', 'Rafraîchis la page LinkedIn (F5)');
+  if (result.type === 'direct') {
+    // Check if content script is loaded
+    try {
+      const response = await chrome.tabs.sendMessage(result.tab.id, { type: 'PING' });
+      if (response?.ok) {
+        setStatus('connected', 'LinkedIn Messaging ✓');
+        return true;
+      }
+    } catch (e) {
+      // Content script not responding
+    }
+    setStatus('disconnected', 'Rafraîchis LinkedIn (F5)');
+    return false;
+  }
+  
+  setStatus('disconnected', 'Va sur LinkedIn Messaging');
   return false;
 }
 
-async function triggerDOMSync() {
-  if (isSyncing || !currentTabId) return;
-  
-  isSyncing = true;
-  setStatus('syncing', 'Synchronisation DOM...');
-  syncBtn.disabled = true;
-  
-  try {
-    // Send config first
-    await chrome.tabs.sendMessage(currentTabId, {
-      type: 'SET_CONFIG',
-      config: {
-        API_URL: apiUrl.value,
-      },
-    });
-    
-    // Trigger sync
-    const response = await chrome.tabs.sendMessage(currentTabId, {
-      type: 'FULL_SYNC',
-    });
-    
-    if (response) {
-      updateUI(response);
-      setStatus('connected', 'Synchronisé (DOM)');
-    }
-  } catch (e) {
-    console.error('DOM Sync failed:', e);
-    setStatus('connected', 'Erreur de sync');
-  } finally {
-    isSyncing = false;
-    syncBtn.disabled = false;
-  }
-}
-
 // =====================
-// API SYNC (new)
+// SYNC
 // =====================
 
-async function triggerAPISync() {
+async function triggerSync() {
   if (isSyncing) return;
   
   isSyncing = true;
-  setStatus('syncing', 'Sync API en cours...');
-  apiSyncBtn.disabled = true;
-  
-  try {
-    // Fetch first batch of conversations
-    const response = await chrome.runtime.sendMessage({
-      type: 'FETCH_CONVERSATIONS',
-      start: 0,
-      count: 20,
-    });
-    
-    if (response.ok) {
-      console.log('API Sync result:', response.data);
-      
-      // Transform API data to our format
-      const conversations = transformAPIConversations(response.data.conversations);
-      
-      updateUI({
-        conversations,
-        messages: [],
-      });
-      
-      setStatus('connected', `Sync API: ${conversations.length} conversations`);
-    } else {
-      throw new Error(response.error);
-    }
-  } catch (e) {
-    console.error('API Sync failed:', e);
-    setStatus('connected', 'Erreur API: ' + e.message);
-  } finally {
-    isSyncing = false;
-    apiSyncBtn.disabled = false;
-  }
-}
-
-async function fetchAllConversations() {
-  if (isSyncing) return;
-  
-  isSyncing = true;
-  setStatus('syncing', 'Récupération de toutes les conversations...');
-  fetchAllConvBtn.disabled = true;
+  setStatus('syncing', 'Synchronisation...');
+  syncBtn.classList.add('syncing');
+  syncBtnText.textContent = 'Synchronisation...';
   showProgress(true, 0, 'Démarrage...');
   
+  const config = {
+    apiUrl: apiUrl.value,
+    convLimit: parseInt(convLimit.value) || 50,
+    msgLimit: parseInt(msgLimit.value) || 20,
+  };
+  
   try {
-    const response = await chrome.runtime.sendMessage({
-      type: 'FETCH_ALL_CONVERSATIONS',
+    // Send sync command to content script
+    const response = await chrome.tabs.sendMessage(linkedInTabId, {
+      type: 'FULL_SYNC',
+      config,
     });
     
-    if (response.ok) {
-      apiConversations = response.data;
-      const conversations = transformAPIConversations(response.data);
+    if (response?.ok) {
+      const stats = {
+        conversations: response.conversations?.length || 0,
+        messages: response.totalMessages || 0,
+      };
       
-      // Save to storage
-      await chrome.storage.local.set({ apiConversations: response.data });
+      convCount.textContent = stats.conversations;
+      msgCount.textContent = stats.messages;
       
-      updateUI({
-        conversations,
-        messages: [],
+      // Save stats
+      await chrome.storage.local.set({
+        lastSyncTime: new Date().toISOString(),
+        lastStats: stats,
       });
       
-      // Sync to CRM server if configured
-      if (apiUrl.value) {
-        await syncToServer(conversations, []);
-      }
+      lastSync.textContent = `Dernière sync: ${formatTime(new Date())}`;
+      setStatus('connected', `✅ ${stats.conversations} conv. synchronisées`);
+      showProgress(true, 100, 'Terminé !');
       
-      setStatus('connected', `✅ ${conversations.length} conversations récupérées`);
-      showProgress(false);
+      setTimeout(() => showProgress(false), 2000);
     } else {
-      throw new Error(response.error);
+      throw new Error(response?.error || 'Sync failed');
     }
   } catch (e) {
-    console.error('Fetch all conversations failed:', e);
-    setStatus('connected', 'Erreur: ' + e.message);
+    console.error('Sync failed:', e);
+    setStatus('connected', '❌ Erreur: ' + e.message);
     showProgress(false);
   } finally {
     isSyncing = false;
-    fetchAllConvBtn.disabled = false;
-  }
-}
-
-async function fetchAllMessages() {
-  if (isSyncing) return;
-  
-  if (apiConversations.length === 0) {
-    alert('Récupère d\'abord les conversations !');
-    return;
-  }
-  
-  isSyncing = true;
-  setStatus('syncing', 'Récupération de tous les messages...');
-  fetchAllMsgBtn.disabled = true;
-  
-  const allMessages = [];
-  const total = apiConversations.length;
-  
-  try {
-    for (let i = 0; i < total; i++) {
-      const conv = apiConversations[i];
-      const convUrn = conv.entityUrn || conv['*conversation'];
-      
-      showProgress(true, Math.round((i / total) * 100), `Conversation ${i + 1}/${total}...`);
-      
-      const response = await chrome.runtime.sendMessage({
-        type: 'FETCH_ALL_MESSAGES',
-        conversationUrn: convUrn,
-      });
-      
-      if (response.ok) {
-        allMessages.push(...response.data);
-      }
-    }
-    
-    // Transform and update UI
-    const messages = transformAPIMessages(allMessages);
-    
-    updateUI({
-      conversations: transformAPIConversations(apiConversations),
-      messages,
-    });
-    
-    msgCount.textContent = messages.length;
-    
-    // Sync to CRM server if configured
-    if (apiUrl.value) {
-      await syncToServer(transformAPIConversations(apiConversations), messages);
-    }
-    
-    setStatus('connected', `✅ ${messages.length} messages récupérés`);
-    showProgress(false);
-  } catch (e) {
-    console.error('Fetch all messages failed:', e);
-    setStatus('connected', 'Erreur: ' + e.message);
-    showProgress(false);
-  } finally {
-    isSyncing = false;
-    fetchAllMsgBtn.disabled = false;
-  }
-}
-
-// =====================
-// DATA TRANSFORMATION
-// =====================
-
-function transformAPIConversations(apiConversations) {
-  console.log('🔄 Transforming', apiConversations.length, 'conversations');
-  if (apiConversations.length > 0) {
-    console.log('🔄 First conv keys:', Object.keys(apiConversations[0]));
-  }
-  
-  return apiConversations.map((conv, index) => {
-    const lastMessage = conv.lastActivityAt || conv.lastReadAt;
-    
-    // Use enriched data from background.js (prefixed with _)
-    let participantName = conv._participantName || 'Unknown';
-    let participantPicture = conv._participantPicture || null;
-    let participantId = conv._participantId || null;
-    
-    // Fallback methods if enriched data not available
-    if (participantName === 'Unknown') {
-      // Method 1: participantFirstNames (legacy API)
-      if (conv.participantFirstNames && Object.keys(conv.participantFirstNames).length > 0) {
-        participantName = Object.values(conv.participantFirstNames).join(', ');
-      }
-      // Method 2: conversationParticipants
-      else if (conv.conversationParticipants) {
-        participantName = conv.conversationParticipants
-          .map(p => p.firstName || p.name)
-          .filter(Boolean)
-          .join(', ');
-      }
-      // Method 3: title field
-      else if (conv.title) {
-        participantName = conv.title;
-      }
-    }
-    
-    // Get last message preview
-    let lastMessagePreview = '';
-    if (conv.lastMessage?.body?.text) {
-      lastMessagePreview = conv.lastMessage.body.text;
-    } else if (typeof conv.lastMessage?.body === 'string') {
-      lastMessagePreview = conv.lastMessage.body;
-    }
-    
-    const result = {
-      id: conv.entityUrn || `conv-${index}`,
-      entityUrn: conv.entityUrn,
-      threadId: conv._fullUrn || conv.entityUrn,
-      linkedinId: participantId,
-      name: participantName,
-      avatarUrl: participantPicture,
-      headline: conv._participantHeadline || '',
-      lastMessagePreview: lastMessagePreview,
-      lastMessageTime: lastMessage ? new Date(lastMessage).toISOString() : null,
-      unreadCount: conv.unreadCount || 0,
-      isStarred: conv.starred || false,
-      isUnread: (conv.unreadCount || 0) > 0,
-    };
-    
-    if (index === 0) {
-      console.log('🔄 First transformed:', result);
-    }
-    
-    return result;
-  });
-}
-
-function transformAPIMessages(apiMessages) {
-  return apiMessages.map((msg, index) => {
-    const fromProfile = msg['*from'] || msg.from;
-    
-    return {
-      id: msg.entityUrn || `msg-${index}`,
-      urn: msg.entityUrn,
-      content: msg.body || msg.eventContent?.body || '',
-      isFromMe: msg.fromCurrentUser || false,
-      timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : null,
-      sender: {
-        linkedinId: fromProfile,
-        name: msg.fromParticipant?.firstName || 'Unknown',
-      },
-      conversationUrn: msg['*conversation'],
-      raw: msg,
-    };
-  });
-}
-
-// =====================
-// SERVER SYNC
-// =====================
-
-async function syncToServer(conversations, messages) {
-  if (!apiUrl.value) return;
-  
-  try {
-    const response = await chrome.runtime.sendMessage({
-      type: 'SYNC_TO_SERVER',
-      apiUrl: apiUrl.value,
-      data: {
-        type: 'api_sync',
-        timestamp: new Date().toISOString(),
-        conversations,
-        messages,
-      },
-    });
-    
-    if (!response.ok) {
-      console.error('Server sync failed:', response.error);
-    }
-  } catch (e) {
-    console.error('Server sync error:', e);
+    syncBtn.classList.remove('syncing');
+    syncBtnText.textContent = 'Synchroniser';
+    syncBtn.disabled = false;
   }
 }
 
@@ -521,17 +234,15 @@ async function syncToServer(conversations, messages) {
 // =====================
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'FETCH_PROGRESS') {
-    const { progress } = message;
-    if (progress.percent !== undefined) {
-      showProgress(true, progress.percent, `${progress.fetched}/${progress.total} conversations...`);
-    } else if (progress.fetched !== undefined) {
-      progressText.textContent = `${progress.fetched} messages...`;
+  if (message.type === 'SYNC_PROGRESS') {
+    const { current, total, phase } = message;
+    const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+    
+    if (phase === 'conversations') {
+      showProgress(true, percent * 0.5, `Conversations: ${current}/${total}`);
+    } else if (phase === 'messages') {
+      showProgress(true, 50 + percent * 0.5, `Messages: ${current}/${total}`);
     }
-  }
-  
-  if (message.type === 'SYNC_DATA') {
-    updateUI(message.data);
   }
 });
 
@@ -539,16 +250,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // EVENT LISTENERS
 // =====================
 
-syncBtn.addEventListener('click', triggerDOMSync);
-apiSyncBtn.addEventListener('click', triggerAPISync);
-fetchAllConvBtn.addEventListener('click', fetchAllConversations);
-fetchAllMsgBtn.addEventListener('click', fetchAllMessages);
-autoSync.addEventListener('change', saveConfig);
+syncBtn.addEventListener('click', triggerSync);
 apiUrl.addEventListener('change', saveConfig);
 apiUrl.addEventListener('blur', saveConfig);
+convLimit.addEventListener('change', saveConfig);
+msgLimit.addEventListener('change', saveConfig);
 
 // =====================
-// INITIALIZATION
+// INIT
 // =====================
 
 async function init() {
