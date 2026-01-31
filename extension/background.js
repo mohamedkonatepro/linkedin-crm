@@ -278,55 +278,63 @@ async function fetchConversations(start = 0, count = 20) {
 
 async function fetchAllConversations(onProgress) {
   const allConversations = [];
-  let start = 0;
-  const count = 40; // LinkedIn's max per request
-  let total = Infinity;
+  const count = 25; // LinkedIn's max per request (was 40, now 25 for GraphQL)
   
-  while (start < total) {
-    const result = await fetchConversations(start, count);
-    allConversations.push(...result.conversations);
-    total = result.total;
-    start += count;
-    
-    if (onProgress) {
-      onProgress({
-        fetched: allConversations.length,
-        total,
-        percent: Math.round((allConversations.length / total) * 100),
-      });
-    }
-    
-    // Rate limiting - wait between requests
-    await delay(500 + Math.random() * 500);
+  // For GraphQL, we use cursor-based pagination
+  // For now, just fetch first batch (will add cursor support later)
+  const result = await fetchConversations(0, count);
+  allConversations.push(...result.conversations);
+  
+  if (onProgress) {
+    onProgress({
+      fetched: allConversations.length,
+      total: allConversations.length,
+      percent: 100,
+    });
   }
   
   return allConversations;
 }
 
-async function fetchMessages(conversationUrn, createdBefore = null, count = 20) {
-  // Extract conversation ID from URN
-  const convId = conversationUrn.replace('urn:li:msg_conversation:', '');
+async function fetchMessages(conversationUrn, createdBefore = null, count = 100) {
+  console.log('💬 Fetching messages for:', conversationUrn);
   
-  let endpoint = `/voyager/api/messaging/conversations/${encodeURIComponent(conversationUrn)}/events?keyVersion=LEGACY_INBOX&count=${count}`;
-  
-  if (createdBefore) {
-    endpoint += `&createdBefore=${createdBefore}`;
-  }
+  // New GraphQL endpoint for messages
+  const queryId = 'messengerMessages.5846eeb71c981f11e0134cb6626cc314';
+  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodeURIComponent(conversationUrn)})`;
   
   try {
     const data = await makeLinkedInRequest(endpoint);
-    console.log('💬 Fetched messages for', convId, ':', data);
+    console.log('💬 Fetched messages (GraphQL):', data);
     
-    // Store messages
-    if (data.elements) {
-      for (const msg of data.elements) {
-        capturedData.messages.set(msg.entityUrn, msg);
-      }
+    // Parse GraphQL response - messages are in included
+    const messages = (data.included || []).filter(item => 
+      item.$type === 'com.linkedin.messenger.Message'
+    );
+    
+    // Store messages with correct body extraction
+    for (const msg of messages) {
+      // Extract text from body.text (GraphQL format)
+      const msgData = {
+        ...msg,
+        body: msg.body?.text || msg.body || '',  // body.text is the actual content
+        createdAt: msg.deliveredAt || msg.createdAt
+      };
+      capturedData.messages.set(msg.entityUrn, msgData);
     }
     
+    // Return parsed messages
+    const parsedMessages = messages.map(msg => ({
+      entityUrn: msg.entityUrn,
+      body: msg.body?.text || '',
+      createdAt: msg.deliveredAt || msg.createdAt,
+      sender: msg['*sender'],
+      conversation: msg['*conversation']
+    }));
+    
     return {
-      messages: data.elements || [],
-      paging: data.paging,
+      messages: parsedMessages,
+      paging: null, // GraphQL uses different pagination
     };
   } catch (e) {
     console.error('❌ Error fetching messages:', e);
@@ -335,37 +343,12 @@ async function fetchMessages(conversationUrn, createdBefore = null, count = 20) 
 }
 
 async function fetchAllMessages(conversationUrn, onProgress) {
-  const allMessages = [];
-  let createdBefore = null;
-  const count = 40;
-  let hasMore = true;
+  // For GraphQL, we get all messages in one call (up to 100)
+  const result = await fetchMessages(conversationUrn);
+  const allMessages = result.messages;
   
-  while (hasMore) {
-    const result = await fetchMessages(conversationUrn, createdBefore, count);
-    
-    if (result.messages.length === 0) {
-      hasMore = false;
-    } else {
-      allMessages.push(...result.messages);
-      
-      // Get the oldest message's timestamp for pagination
-      const oldestMsg = result.messages[result.messages.length - 1];
-      createdBefore = oldestMsg.createdAt;
-      
-      if (result.messages.length < count) {
-        hasMore = false;
-      }
-    }
-    
-    if (onProgress) {
-      onProgress({
-        fetched: allMessages.length,
-        conversationUrn,
-      });
-    }
-    
-    // Rate limiting
-    await delay(300 + Math.random() * 300);
+  if (onProgress) {
+    onProgress({ fetched: allMessages.length });
   }
   
   return allMessages;
