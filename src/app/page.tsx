@@ -75,30 +75,37 @@ export default function Home() {
           }
         }))
         
-        // Find the conversation ID for the current conversation (where messages are from)
-        const currentConvLinkedinId = json.data.currentConversation?.linkedinId
-        const activeConvIndex = (json.data.conversations || []).findIndex(
-          (c: any) => c.isActive
-        )
-        const currentConversationId = activeConvIndex >= 0 ? `conv-${activeConvIndex}` : null
+        // Build a map of threadId -> conversation id
+        const threadIdToConvId: Record<string, string> = {}
+        conversations.forEach((conv: any) => {
+          if (conv.linkedin_thread_id) {
+            threadIdToConvId[conv.linkedin_thread_id] = conv.id
+          }
+        })
 
-        console.log('Current conversation:', currentConvLinkedinId, 'activeIndex:', activeConvIndex, 'id:', currentConversationId)
+        console.log('Thread ID to Conv ID map:', threadIdToConvId)
 
-        const messages = (json.data.messages || []).map((msg: any, index: number) => ({
-          id: msg.urn || `msg-${index}`,
-          user_id: 'demo',
-          conversation_id: currentConversationId,
-          contact_id: msg.sender?.linkedinId || null,
-          linkedin_message_urn: msg.urn || `urn-${index}`,
-          content: msg.content || '',
-          content_type: 'text',
-          is_from_me: msg.isFromMe || false,
-          is_read: true,
-          sent_at: msg.timestamp || new Date().toISOString(),
-          attachments: [],
-          created_at: new Date().toISOString(),
-          synced_at: new Date().toISOString(),
-        }))
+        // Map messages to their conversations using conversationId (threadId)
+        const messages = (json.data.messages || []).map((msg: any, index: number) => {
+          // Find the conversation ID from the message's conversationId (which is the threadId)
+          const convId = msg.conversationId ? threadIdToConvId[msg.conversationId] || msg.conversationId : null
+          
+          return {
+            id: msg.urn || `msg-${index}`,
+            user_id: 'demo',
+            conversation_id: convId,
+            contact_id: msg.sender?.linkedinId || null,
+            linkedin_message_urn: msg.urn || `urn-${index}`,
+            content: msg.content || '',
+            content_type: 'text',
+            is_from_me: msg.isFromMe || false,
+            is_read: true,
+            sent_at: msg.timestamp || new Date().toISOString(),
+            attachments: [],
+            created_at: new Date().toISOString(),
+            synced_at: new Date().toISOString(),
+          }
+        })
         
         console.log('Setting conversations:', conversations.length, conversations)
         setConversations(conversations)

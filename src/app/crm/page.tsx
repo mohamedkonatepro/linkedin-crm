@@ -28,6 +28,7 @@ interface Conversation {
 
 interface Message {
   id: string
+  conversationId: string | null
   content: string
   isFromMe: boolean
   timestamp: string | null
@@ -62,9 +63,10 @@ export default function CRMPage() {
           unreadCount: c.unreadCount || 0
         }))
         
-        // Transform messages
+        // Transform messages - associate with conversation
         const msgs = (json.data.messages || []).map((m: any, i: number) => ({
           id: m.urn || `msg-${i}`,
+          conversationId: m.conversationId || null,
           content: m.content || '',
           isFromMe: m.isFromMe || false,
           timestamp: m.timestamp
@@ -100,6 +102,9 @@ export default function CRMPage() {
 
   // Selected conversation
   const selectedConv = conversations.find(c => c.id === selectedConvId)
+  
+  // Filter messages for selected conversation
+  const selectedMessages = messages.filter(m => m.conversationId === selectedConvId)
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-white">
@@ -254,7 +259,12 @@ export default function CRMPage() {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {messages.map((msg, index) => (
+                  {selectedMessages.length === 0 ? (
+                    <div className="text-center text-gray-400 py-8">
+                      <p>Aucun message pour cette conversation</p>
+                      <p className="text-sm mt-2">Clique sur "Synchroniser" dans l'extension</p>
+                    </div>
+                  ) : selectedMessages.map((msg, index) => (
                     <div
                       key={`${msg.id}-${index}`}
                       className={`flex ${msg.isFromMe ? 'justify-end' : 'justify-start'}`}
