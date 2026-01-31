@@ -254,9 +254,9 @@ export default function CRMPage() {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {messages.map(msg => (
+                  {messages.map((msg, index) => (
                     <div
-                      key={msg.id}
+                      key={`${msg.id}-${index}`}
                       className={`flex ${msg.isFromMe ? 'justify-end' : 'justify-start'}`}
                     >
                       <div

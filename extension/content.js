@@ -216,12 +216,17 @@ async function scrapeMessagesForConversation(conv, limit) {
   const messages = [];
   
   // Wait for messages to load
-  await delay(500);
+  await delay(800);
   
+  // Try multiple selectors for message containers
   const messageEls = document.querySelectorAll(
     '.msg-s-event-listitem, ' +
-    '.msg-s-message-list__event'
+    '.msg-s-message-list__event, ' +
+    '[class*="msg-s-message-group"], ' +
+    'li[class*="msg-s-event"]'
   );
+  
+  console.log(`📨 Found ${messageEls.length} message elements`);
   
   const total = Math.min(messageEls.length, limit);
   
@@ -231,7 +236,7 @@ async function scrapeMessagesForConversation(conv, limit) {
     if (!msgEl) continue;
     
     try {
-      const msg = extractMessageData(msgEl);
+      const msg = extractMessageData(msgEl, i);
       if (msg && msg.content) {
         messages.push(msg);
       }
@@ -243,34 +248,74 @@ async function scrapeMessagesForConversation(conv, limit) {
   return messages;
 }
 
-function extractMessageData(msgEl) {
-  // Get message content
-  const contentEl = msgEl.querySelector(
-    '.msg-s-event-listitem__body, ' +
-    '.msg-s-message-group__content, ' +
-    'p.msg-s-event-listitem__message-body'
-  );
-  const content = contentEl?.textContent?.trim() || '';
+function extractMessageData(msgEl, index) {
+  // Get message content - try multiple selectors
+  let content = '';
+  const contentSelectors = [
+    '.msg-s-event-listitem__body',
+    '.msg-s-message-group__content',
+    'p.msg-s-event-listitem__message-body',
+    'p[class*="msg-s-event-listitem"]',
+    '.msg-s-event-listitem__message-bubble p',
+    'p[dir="ltr"]',
+    '.msg-s-event-listitem p'
+  ];
+  
+  for (const selector of contentSelectors) {
+    const el = msgEl.querySelector(selector);
+    if (el?.textContent?.trim()) {
+      content = el.textContent.trim();
+      break;
+    }
+  }
+  
+  // Fallback: get all paragraph text
+  if (!content) {
+    const paragraphs = msgEl.querySelectorAll('p');
+    for (const p of paragraphs) {
+      const text = p.textContent?.trim();
+      if (text && text.length > 0 && !text.includes('Envoyé le')) {
+        content = text;
+        break;
+      }
+    }
+  }
   
   // Get sender name
-  const senderEl = msgEl.querySelector(
-    '.msg-s-message-group__name, ' +
-    '.msg-s-event-listitem__sender-name'
-  );
-  const senderName = senderEl?.textContent?.trim() || null;
+  const senderSelectors = [
+    '.msg-s-message-group__name',
+    '.msg-s-event-listitem__sender-name',
+    'a[class*="msg-s-message-group__profile-link"] span',
+    '.msg-s-event-listitem a[href*="/in/"] span'
+  ];
+  
+  let senderName = null;
+  for (const selector of senderSelectors) {
+    const el = msgEl.querySelector(selector);
+    if (el?.textContent?.trim()) {
+      senderName = el.textContent.trim();
+      break;
+    }
+  }
   
   // Get timestamp
   const timeEl = msgEl.querySelector('time');
-  const timestamp = timeEl?.getAttribute('datetime') || timeEl?.textContent || null;
+  const timestamp = timeEl?.getAttribute('datetime') || timeEl?.textContent?.trim() || null;
   
-  // Check if from me (sent messages have different styling)
-  const isFromMe = msgEl.classList.contains('msg-s-event-listitem--outgoing') ||
-                   msgEl.querySelector('.msg-s-event-listitem__icon--sent') !== null ||
-                   msgEl.textContent?.includes('Envoyé') ||
-                   msgEl.querySelector('[data-test-message-sent-indicator]') !== null;
+  // Check if from me (multiple detection methods)
+  const isFromMe = 
+    msgEl.classList.contains('msg-s-event-listitem--outgoing') ||
+    msgEl.querySelector('.msg-s-event-listitem__icon--sent') !== null ||
+    msgEl.querySelector('[class*="message-sent"]') !== null ||
+    msgEl.textContent?.includes('Envoyé le') ||
+    msgEl.querySelector('img[alt*="Envoyé"]') !== null ||
+    // Check if message bubble is aligned right (sent messages)
+    msgEl.querySelector('.msg-s-event-listitem__message-bubble--outgoing') !== null;
   
-  // Get message URN if available
-  const urn = msgEl.getAttribute('data-event-urn') || null;
+  // Generate unique ID
+  const urn = msgEl.getAttribute('data-event-urn') || 
+              msgEl.getAttribute('data-id') || 
+              `msg-${index}-${Date.now()}`;
   
   return {
     content,
