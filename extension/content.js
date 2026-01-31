@@ -139,7 +139,37 @@ async function scrapeConversationsWithMessages(convLimit, msgLimit) {
       // Click on conversation to load messages
       console.log(`📬 Clicking conversation ${i + 1}: ${conv.name}...`);
       item.click();
-      await delay(1200); // Wait for messages to load
+      
+      // Wait for the thread to actually change by checking the header name
+      const expectedName = conv.name;
+      let attempts = 0;
+      let threadChanged = false;
+      
+      while (attempts < 10 && !threadChanged) {
+        await delay(300);
+        attempts++;
+        
+        // Check if the thread header shows the correct name
+        const headerName = document.querySelector(
+          '.msg-thread__link-to-profile, ' +
+          '.msg-s-message-list-container h2, ' +
+          '.msg-overlay-conversation-bubble__title, ' +
+          '[data-control-name="view_profile"] span'
+        )?.textContent?.trim();
+        
+        console.log(`   👀 Attempt ${attempts}: header shows "${headerName}", expecting "${expectedName}"`);
+        
+        if (headerName && headerName.toLowerCase().includes(expectedName.toLowerCase().split(' ')[0])) {
+          threadChanged = true;
+          console.log(`   ✅ Thread loaded for ${expectedName}`);
+        }
+      }
+      
+      if (!threadChanged) {
+        console.log(`   ⚠️ Thread may not have loaded correctly for ${expectedName}`);
+      }
+      
+      await delay(500); // Extra wait for messages to render
       
       // Get thread ID - try multiple sources
       let threadId = null;
