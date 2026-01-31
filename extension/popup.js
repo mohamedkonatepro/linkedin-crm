@@ -21,6 +21,7 @@ const progressText = document.getElementById('progressText');
 // State
 let isSyncing = false;
 let linkedInTabId = null;
+let linkedInFrameId = null;
 
 // =====================
 // STORAGE
@@ -95,7 +96,8 @@ function formatTime(date) {
 // =====================
 
 async function findLinkedInTab() {
-  // First, try to find a LinkedIn messaging tab (direct)
+  // First, try to find a LinkedIn messaging tab (direct or in iframe)
+  // The content script runs in iframes too (all_frames: true)
   let tabs = await chrome.tabs.query({
     url: 'https://www.linkedin.com/messaging/*',
   });
@@ -104,20 +106,32 @@ async function findLinkedInTab() {
     return { tab: tabs[0], type: 'direct' };
   }
   
-  // Next, try to find CRM page with iframe
+  // Try to find CRM page - the iframe inside will have the content script
   tabs = await chrome.tabs.query({
-    url: ['http://localhost:3000/*', 'http://127.0.0.1:3000/*', 'https://*.vercel.app/*'],
+    url: ['http://localhost:3000/*', 'http://127.0.0.1:3000/*', 'https://*.vercel.app/*', 'http://*/*'],
   });
   
   for (const tab of tabs) {
-    // Check if this tab has a LinkedIn iframe
+    // Try to ping the LinkedIn iframe inside this tab
     try {
-      const response = await chrome.tabs.sendMessage(tab.id, { type: 'CHECK_IFRAME' });
-      if (response?.hasIframe) {
-        return { tab, type: 'iframe' };
+      // Get all frames in this tab
+      const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id });
+      
+      for (const frame of frames || []) {
+        if (frame.url?.includes('linkedin.com/messaging')) {
+          // Found LinkedIn iframe! Try to communicate
+          try {
+            const response = await chrome.tabs.sendMessage(tab.id, { type: 'PING' }, { frameId: frame.frameId });
+            if (response?.ok) {
+              return { tab, type: 'iframe', frameId: frame.frameId };
+            }
+          } catch (e) {
+            console.log('Frame ping failed:', e.message);
+          }
+        }
       }
     } catch (e) {
-      // Content script not loaded, continue
+      console.log('Frame check failed:', e.message);
     }
   }
   
@@ -139,13 +153,15 @@ async function checkConnection() {
   if (!result) {
     setStatus('disconnected', 'Ouvre LinkedIn ou le CRM');
     linkedInTabId = null;
+    linkedInFrameId = null;
     return false;
   }
   
   linkedInTabId = result.tab.id;
+  linkedInFrameId = result.frameId || null;
   
   if (result.type === 'iframe') {
-    setStatus('connected', 'CRM + iframe détecté ✓');
+    setStatus('connected', 'Iframe LinkedIn détecté ✓');
     return true;
   }
   
@@ -188,11 +204,12 @@ async function triggerSync() {
   };
   
   try {
-    // Send sync command to content script
+    // Send sync command to content script (with frameId if iframe)
+    const messageOptions = linkedInFrameId ? { frameId: linkedInFrameId } : {};
     const response = await chrome.tabs.sendMessage(linkedInTabId, {
       type: 'FULL_SYNC',
       config,
-    });
+    }, messageOptions);
     
     if (response?.ok) {
       const stats = {

@@ -8,6 +8,7 @@
     "storage",
     "activeTab",
     "webRequest",
+    "webNavigation",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess",
     "declarativeNetRequestFeedback",
@@ -44,7 +45,8 @@
       "matches": ["https://www.linkedin.com/messaging/*"],
       "js": ["content.js"],
       "css": ["content.css"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   
