@@ -65,12 +65,17 @@ interface ConversationItemProps {
 function ConversationItem({ conversation, isSelected, onClick }: ConversationItemProps) {
   const contact = conversation.contact
   
-  const timeAgo = conversation.last_message_at
-    ? formatDistanceToNow(new Date(conversation.last_message_at), { 
-        addSuffix: true, 
-        locale: fr 
-      })
-    : null
+  const getTimeAgo = () => {
+    if (!conversation.last_message_at) return null
+    try {
+      const date = new Date(conversation.last_message_at)
+      if (isNaN(date.getTime())) return null
+      return formatDistanceToNow(date, { addSuffix: true, locale: fr })
+    } catch {
+      return null
+    }
+  }
+  const timeAgo = getTimeAgo()
 
   return (
     <button
