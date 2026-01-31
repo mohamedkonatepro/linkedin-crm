@@ -145,16 +145,25 @@ async function scrapeConversations(limit) {
     if (!item) continue;
     
     try {
-      // Click on conversation to get more details
+      // Click on conversation to load it
       item.click();
-      await delay(500);
+      await delay(800); // Wait for URL to update and messages to load
       
       const conv = extractConversationData(item);
       if (conv) {
-        // Get thread ID from URL
+        // Get thread ID from URL after click
         const urlMatch = window.location.href.match(/thread\/([^/]+)/);
-        conv.threadId = urlMatch ? urlMatch[1] : null;
+        conv.threadId = urlMatch ? urlMatch[1] : `conv-${i}`;
         
+        // Also try to get threadId from the conversation item itself
+        const dataThreadId = item.getAttribute('data-thread-urn') || 
+                             item.getAttribute('data-conversation-urn') ||
+                             item.querySelector('[data-thread-urn]')?.getAttribute('data-thread-urn');
+        if (dataThreadId) {
+          conv.threadId = dataThreadId;
+        }
+        
+        console.log(`📬 Conv ${i}: ${conv.name} (threadId: ${conv.threadId})`);
         conversations.push(conv);
       }
     } catch (e) {
@@ -303,14 +312,26 @@ function extractMessageData(msgEl, index) {
   const timestamp = timeEl?.getAttribute('datetime') || timeEl?.textContent?.trim() || null;
   
   // Check if from me (multiple detection methods)
-  const isFromMe = 
+  // LinkedIn shows sent indicator (checkmarks) for messages you sent
+  const hasSentIndicator = msgEl.querySelector(
+    '[data-test-message-sent-indicator], ' +
+    '.msg-s-message-list-content__sent-confirmation, ' +
+    'img[alt*="Envoyé"], ' +
+    'img[alt*="Lu"], ' +
+    'img[alt*="Sent"], ' +
+    'img[alt*="Read"], ' +
+    '.msg-s-event-listitem__message-bubble svg'  // Checkmark icon
+  ) !== null;
+  
+  const hasOutgoingClass = 
     msgEl.classList.contains('msg-s-event-listitem--outgoing') ||
-    msgEl.querySelector('.msg-s-event-listitem__icon--sent') !== null ||
-    msgEl.querySelector('[class*="message-sent"]') !== null ||
-    msgEl.textContent?.includes('Envoyé le') ||
-    msgEl.querySelector('img[alt*="Envoyé"]') !== null ||
-    // Check if message bubble is aligned right (sent messages)
     msgEl.querySelector('.msg-s-event-listitem__message-bubble--outgoing') !== null;
+  
+  // Check for "Envoyé le" text pattern (French) or "Sent" (English)
+  const fullText = msgEl.textContent || '';
+  const hasSentText = fullText.includes('Envoyé le') || fullText.includes('Sent');
+  
+  const isFromMe = hasSentIndicator || hasOutgoingClass || hasSentText;
   
   // Generate unique ID
   const urn = msgEl.getAttribute('data-event-urn') || 
