@@ -303,20 +303,26 @@ async function fetchConversations(start = 0, count = 20) {
         
         const participant = participantMap.get(pUrn);
         if (participant) {
-          // MessagingParticipant has name directly or in participantType
-          const name = participant.name?.text || participant.name;
-          const headline = participant.headline?.text || participant.headline;
-          const picture = participant.picture?.rootUrl || 
-                         participant.profilePicture?.displayImageReference?.url ||
-                         participant.picture?.['com.linkedin.common.VectorImage']?.rootUrl;
-          
-          if (name) {
-            conv._participantName = name;
-            conv._participantHeadline = headline;
-            conv._participantPicture = picture;
-            conv._participantId = participant.entityUrn;
-            console.log(`✅ Enriched conv with participant: ${name}`);
-            break;
+          // MessagingParticipant structure: participantType.member.firstName.text
+          const member = participant.participantType?.member;
+          if (member) {
+            const firstName = member.firstName?.text || '';
+            const lastName = member.lastName?.text || '';
+            const fullName = `${firstName} ${lastName}`.trim();
+            const headline = member.headline?.text || '';
+            const pictureRoot = member.profilePicture?.rootUrl || '';
+            const pictureSegment = member.profilePicture?.artifacts?.[0]?.fileIdentifyingUrlPathSegment || '';
+            const picture = pictureRoot && pictureSegment ? `${pictureRoot}${pictureSegment}` : '';
+            
+            if (fullName) {
+              conv._participantName = fullName;
+              conv._participantHeadline = headline;
+              conv._participantPicture = picture;
+              conv._participantId = participant.entityUrn;
+              conv._participantProfileUrl = member.profileUrl;
+              console.log(`✅ Enriched conv with participant: ${fullName}`);
+              break;
+            }
           }
         }
       }
