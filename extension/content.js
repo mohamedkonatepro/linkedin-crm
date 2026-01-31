@@ -65,7 +65,12 @@ async function performFullSync() {
     });
     
     if (!convResponse.ok) {
-      throw new Error(convResponse.error || 'Failed to fetch conversations');
+      // If API fails, show helpful error
+      const error = convResponse.error || 'Failed to fetch conversations';
+      if (error.includes('QueryId')) {
+        throw new Error('QueryId pas encore capturé. Rafraîchis la page LinkedIn Messaging (F5).');
+      }
+      throw new Error(error);
     }
     
     const apiConversations = convResponse.data.slice(0, config.convLimit);

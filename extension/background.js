@@ -193,10 +193,6 @@ async function fetchConversations() {
 }
 
 async function fetchMessages(conversationUrn, count = 20) {
-  if (!discoveredQueryIds.messages) {
-    throw new Error('Messages queryId not discovered. Open a conversation first.');
-  }
-  
   const userUrn = await getMailboxUrn();
   let fullConversationUrn = conversationUrn;
   
@@ -207,23 +203,51 @@ async function fetchMessages(conversationUrn, count = 20) {
     fullConversationUrn = `urn:li:msg_conversation:(${userUrn},${convId})`;
   }
   
-  const queryId = discoveredQueryIds.messages;
-  const encodedUrn = encodeURIComponent(fullConversationUrn).replace(/\(/g, '%28').replace(/\)/g, '%29');
-  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodedUrn})`;
+  // Try GraphQL API first if queryId is available
+  if (discoveredQueryIds.messages) {
+    try {
+      const queryId = discoveredQueryIds.messages;
+      const encodedUrn = encodeURIComponent(fullConversationUrn).replace(/\(/g, '%28').replace(/\)/g, '%29');
+      const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodedUrn})`;
+      
+      const data = await makeLinkedInRequest(endpoint);
+      
+      const messages = (data.included || []).filter(item => 
+        item.$type === 'com.linkedin.messenger.Message'
+      ).map(msg => ({
+        entityUrn: msg.entityUrn,
+        body: msg.body?.text || '',
+        createdAt: msg.deliveredAt || msg.createdAt,
+        sender: msg['*sender']
+      }));
+      
+      console.log(`💬 Fetched ${messages.length} messages via GraphQL`);
+      return { messages };
+    } catch (e) {
+      console.warn('GraphQL messages failed, trying legacy API:', e.message);
+    }
+  }
   
-  const data = await makeLinkedInRequest(endpoint);
-  
-  const messages = (data.included || []).filter(item => 
-    item.$type === 'com.linkedin.messenger.Message'
-  ).map(msg => ({
-    entityUrn: msg.entityUrn,
-    body: msg.body?.text || '',
-    createdAt: msg.deliveredAt || msg.createdAt,
-    sender: msg['*sender']
-  }));
-  
-  console.log(`💬 Fetched ${messages.length} messages for ${conversationUrn.substring(0, 30)}`);
-  return { messages };
+  // Fallback to legacy REST API (doesn't need queryId)
+  try {
+    const legacyUrn = encodeURIComponent(fullConversationUrn);
+    const endpoint = `/voyager/api/messaging/conversations/${legacyUrn}/events?count=${count}`;
+    
+    const data = await makeLinkedInRequest(endpoint);
+    
+    const messages = (data.elements || []).map(msg => ({
+      entityUrn: msg.entityUrn,
+      body: msg.eventContent?.['com.linkedin.voyager.messaging.event.MessageEvent']?.body || '',
+      createdAt: msg.createdAt,
+      sender: msg.from?.['com.linkedin.voyager.messaging.MessagingMember']?.miniProfile?.entityUrn
+    }));
+    
+    console.log(`💬 Fetched ${messages.length} messages via legacy API`);
+    return { messages };
+  } catch (e) {
+    console.error('Legacy messages API also failed:', e.message);
+    return { messages: [] };
+  }
 }
 
 // =====================
