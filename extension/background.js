@@ -272,9 +272,17 @@ async function fetchConversations(start = 0, count = 20) {
       item.$type === 'com.linkedin.voyager.dash.identity.profile.Profile'
     ) || [];
     
-    // Store in cache
+    // Log conversation structure for debugging
+    if (conversations.length > 0) {
+      console.log('📬 First conversation structure:', JSON.stringify(conversations[0], null, 2));
+    }
+    
+    // Store in cache with full URN for messages
     for (const conv of conversations) {
-      capturedData.conversations.set(conv.entityUrn || conv['*conversation'], conv);
+      // Build full msg_conversation URN for message fetching
+      const convId = conv.entityUrn || conv['*conversation'];
+      conv._fullUrn = `urn:li:msg_conversation:(${userUrn},${convId.split(':').pop()})`;
+      capturedData.conversations.set(convId, conv);
     }
     
     return {
@@ -338,7 +346,24 @@ async function fetchMessages(conversationUrn, createdBefore = null, count = 100)
   const queryId = discoveredQueryIds.messages || 'messengerMessages.5846eeb71c981f11e0134cb6626cc314';
   console.log('💬 Using messages queryId:', queryId, discoveredQueryIds.messages ? '(auto-discovered)' : '(fallback)');
   
-  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodeURIComponent(conversationUrn)})`;
+  // Build the full conversation URN if needed
+  // Format: urn:li:msg_conversation:(urn:li:fsd_profile:USER_URN,CONVERSATION_ID)
+  let fullConversationUrn = conversationUrn;
+  
+  // If it's not already a msg_conversation URN, build it
+  if (!conversationUrn.includes('msg_conversation')) {
+    const userUrn = await getMailboxUrn();
+    if (userUrn) {
+      // Extract conversation ID from entityUrn or use as-is
+      const convId = conversationUrn.includes('urn:li:') 
+        ? conversationUrn.split(':').pop() 
+        : conversationUrn;
+      fullConversationUrn = `urn:li:msg_conversation:(${userUrn},${convId})`;
+      console.log('💬 Built full conversation URN:', fullConversationUrn);
+    }
+  }
+  
+  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodeURIComponent(fullConversationUrn)})`;
   
   try {
     const data = await makeLinkedInRequest(endpoint);
