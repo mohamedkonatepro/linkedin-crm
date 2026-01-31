@@ -31,7 +31,7 @@ let apiConversations = [];
 // =====================
 
 async function loadConfig() {
-  const result = await chrome.storage.local.get(['apiUrl', 'autoSync', 'lastSyncData', 'lastSyncTime', 'apiConversations']);
+  const result = await chrome.storage.local.get(['apiUrl', 'autoSync', 'lastSyncData', 'lastSyncTime', 'apiConversations', 'discoveredQueryIds']);
   
   if (result.apiUrl) {
     apiUrl.value = result.apiUrl;
@@ -52,6 +52,27 @@ async function loadConfig() {
   if (result.apiConversations) {
     apiConversations = result.apiConversations;
     updateConversationCount();
+  }
+  
+  // Check queryIds status
+  updateQueryIdStatus(result.discoveredQueryIds);
+}
+
+function updateQueryIdStatus(queryIds) {
+  const statusEl = document.getElementById('queryIdStatus');
+  const textEl = document.getElementById('queryIdText');
+  
+  if (!queryIds || !queryIds.conversations || !queryIds.messages) {
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#fef3c7';
+    textEl.textContent = '⚠️ QueryIds non capturés. Navigue sur LinkedIn Messaging et ouvre une conversation.';
+  } else {
+    // QueryIds are captured - show success briefly or hide
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#dcfce7';
+    textEl.textContent = '✅ QueryIds capturés automatiquement';
+    // Hide after 3 seconds
+    setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
   }
 }
 

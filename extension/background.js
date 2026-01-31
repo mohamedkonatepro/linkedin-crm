@@ -24,6 +24,14 @@ let discoveredQueryIds = {
   lastUpdated: null,
 };
 
+// Load persisted queryIds on startup
+chrome.storage.local.get(['discoveredQueryIds'], (result) => {
+  if (result.discoveredQueryIds) {
+    discoveredQueryIds = { ...discoveredQueryIds, ...result.discoveredQueryIds };
+    console.log('📦 Loaded persisted queryIds:', discoveredQueryIds);
+  }
+});
+
 // LinkedIn API endpoints we care about
 const API_PATTERNS = {
   conversations: /\/voyager\/api\/messaging\/conversations/,
@@ -252,9 +260,12 @@ async function fetchConversations(start = 0, count = 20) {
       throw new Error('Could not get mailbox URN');
     }
     
-    // Use auto-discovered queryId, fallback to last known working one
-    const queryId = discoveredQueryIds.conversations || 'messengerConversations.0d5e6781bbee71c3e51c8843c6519f48';
-    console.log('📬 Using conversations queryId:', queryId, discoveredQueryIds.conversations ? '(auto-discovered)' : '(fallback)');
+    // Use auto-discovered queryId - NO FALLBACK (LinkedIn changes these regularly)
+    if (!discoveredQueryIds.conversations) {
+      throw new Error('QueryId not discovered yet. Please navigate to LinkedIn Messaging first to capture the current queryId.');
+    }
+    const queryId = discoveredQueryIds.conversations;
+    console.log('📬 Using conversations queryId:', queryId, '(auto-discovered)');
     
     const variables = `(mailboxUrn:${encodeURIComponent(userUrn)})`;
     const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
@@ -389,9 +400,12 @@ async function fetchAllConversations(onProgress) {
 async function fetchMessages(conversationUrn, createdBefore = null, count = 100) {
   console.log('💬 Fetching messages for:', conversationUrn);
   
-  // Use auto-discovered queryId, fallback to last known working one
-  const queryId = discoveredQueryIds.messages || 'messengerMessages.5846eeb71c981f11e0134cb6626cc314';
-  console.log('💬 Using messages queryId:', queryId, discoveredQueryIds.messages ? '(auto-discovered)' : '(fallback)');
+  // Use auto-discovered queryId - NO FALLBACK (LinkedIn changes these regularly)
+  if (!discoveredQueryIds.messages) {
+    throw new Error('Messages queryId not discovered yet. Please open a conversation on LinkedIn Messaging first.');
+  }
+  const queryId = discoveredQueryIds.messages;
+  console.log('💬 Using messages queryId:', queryId, '(auto-discovered)');
   
   // Build the full conversation URN if needed
   // Format: urn:li:msg_conversation:(urn:li:fsd_profile:USER_URN,CONVERSATION_ID)
