@@ -218,9 +218,9 @@ async function fetchConversations(start = 0, count = 20) {
       throw new Error('Could not get mailbox URN');
     }
     
-    // New GraphQL endpoint (LinkedIn changed their API!)
-    const queryId = 'messengerConversations.9501074288a12f3ae9e3c7ea243bccbf';
-    const variables = `(query:(predicateUnions:List((conversationCategoryPredicate:(category:INBOX)))),count:${count},mailboxUrn:${encodeURIComponent(userUrn)})`;
+    // New GraphQL endpoint (LinkedIn changed their API! - updated 2026-01-31)
+    const queryId = 'messengerConversations.0d5e6781bbee71c3e51c8843c6519f48';
+    const variables = `(mailboxUrn:${encodeURIComponent(userUrn)})`;
     const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
     
     const data = await makeLinkedInRequest(endpoint);
