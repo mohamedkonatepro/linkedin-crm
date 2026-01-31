@@ -82,27 +82,13 @@ async function performFullSync() {
   // Wait for conversation list to load
   await waitForElement('.msg-conversations-container__conversations-list, .msg-conversation-listitem');
   
-  // Scrape conversations
-  const conversations = await scrapeConversations(config.convLimit);
+  // Scrape conversations AND their messages together
+  const conversations = await scrapeConversationsWithMessages(config.convLimit, config.msgLimit);
   console.log(`📬 Scraped ${conversations.length} conversations`);
   
-  // Scrape messages from each conversation
   let totalMessages = 0;
-  for (let i = 0; i < conversations.length; i++) {
-    sendProgress(i + 1, conversations.length, 'messages');
-    
-    try {
-      const messages = await scrapeMessagesForConversation(conversations[i], config.msgLimit);
-      conversations[i].messages = messages;
-      totalMessages += messages.length;
-      console.log(`💬 Conv ${i + 1}: ${messages.length} messages`);
-    } catch (e) {
-      console.error(`❌ Error scraping messages for conv ${i}:`, e);
-      conversations[i].messages = [];
-    }
-    
-    // Small delay between conversations
-    await delay(300);
+  for (const conv of conversations) {
+    totalMessages += (conv.messages || []).length;
   }
   
   // Send to CRM server
@@ -132,11 +118,12 @@ async function waitForElement(selector, timeout = 10000) {
   throw new Error(`Element not found: ${selector}`);
 }
 
-async function scrapeConversations(limit) {
+async function scrapeConversationsWithMessages(convLimit, msgLimit) {
   const conversations = [];
   const convItems = document.querySelectorAll('.msg-conversation-listitem, .msg-conversations-container__conversations-list li');
   
-  const total = Math.min(convItems.length, limit);
+  const total = Math.min(convItems.length, convLimit);
+  console.log(`🔍 Found ${convItems.length} conversation items, will process ${total}`);
   
   for (let i = 0; i < total; i++) {
     sendProgress(i + 1, total, 'conversations');
@@ -146,29 +133,35 @@ async function scrapeConversations(limit) {
     
     try {
       // Click on conversation to load it
+      console.log(`📬 Clicking conversation ${i + 1}...`);
       item.click();
-      await delay(800); // Wait for URL to update and messages to load
+      await delay(1000); // Wait for URL to update and messages to load
       
+      // Get thread ID from URL IMMEDIATELY after click
+      const urlMatch = window.location.href.match(/thread\/([^/]+)/);
+      const threadId = urlMatch ? urlMatch[1] : `conv-${i}-${Date.now()}`;
+      
+      console.log(`📬 Conv ${i + 1}: URL threadId = ${threadId}`);
+      
+      // Extract conversation data
       const conv = extractConversationData(item);
       if (conv) {
-        // Get thread ID from URL after click
-        const urlMatch = window.location.href.match(/thread\/([^/]+)/);
-        conv.threadId = urlMatch ? urlMatch[1] : `conv-${i}`;
+        conv.threadId = threadId;
         
-        // Also try to get threadId from the conversation item itself
-        const dataThreadId = item.getAttribute('data-thread-urn') || 
-                             item.getAttribute('data-conversation-urn') ||
-                             item.querySelector('[data-thread-urn]')?.getAttribute('data-thread-urn');
-        if (dataThreadId) {
-          conv.threadId = dataThreadId;
-        }
+        // IMMEDIATELY scrape messages while this conversation is open
+        console.log(`💬 Scraping messages for conv ${i + 1} (${conv.name})...`);
+        const messages = await scrapeMessagesForConversation(conv, msgLimit);
+        conv.messages = messages;
         
-        console.log(`📬 Conv ${i}: ${conv.name} (threadId: ${conv.threadId})`);
+        console.log(`✅ Conv ${i + 1}: ${conv.name} - ${messages.length} messages (threadId: ${threadId})`);
         conversations.push(conv);
       }
     } catch (e) {
-      console.error('Error extracting conversation:', e);
+      console.error(`❌ Error processing conversation ${i}:`, e);
     }
+    
+    // Delay before next conversation
+    await delay(500);
   }
   
   return conversations;
