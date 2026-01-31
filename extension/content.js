@@ -601,3 +601,93 @@ new MutationObserver(() => {
 }).observe(document, { subtree: true, childList: true });
 
 console.log('LinkedIn CRM: Content script loaded');
+
+// =====================
+// PAGE API (for testing without popup)
+// =====================
+
+// Listen for messages from the page
+window.addEventListener('message', async (event) => {
+  if (event.source !== window) return;
+  if (!event.data || event.data.source !== 'linkedin-crm-test') return;
+  
+  console.log('LinkedIn CRM: Received page message:', event.data.type);
+  
+  switch (event.data.type) {
+    case 'TRIGGER_DOM_SYNC':
+      const domResult = await performFullSync();
+      window.postMessage({
+        source: 'linkedin-crm-extension',
+        type: 'DOM_SYNC_RESULT',
+        data: domResult
+      }, '*');
+      break;
+      
+    case 'TRIGGER_API_SYNC':
+      console.log('LinkedIn CRM: Triggering API sync...');
+      chrome.runtime.sendMessage({ type: 'FETCH_ALL_CONVERSATIONS' }, (apiResult) => {
+        console.log('LinkedIn CRM: Got API sync response:', apiResult);
+        if (chrome.runtime.lastError) {
+          console.error('LinkedIn CRM: API sync error:', chrome.runtime.lastError);
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'API_SYNC_ERROR',
+            error: chrome.runtime.lastError.message
+          }, '*');
+        } else if (apiResult?.ok) {
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'API_SYNC_RESULT',
+            data: apiResult
+          }, '*');
+        } else {
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'API_SYNC_ERROR',
+            error: apiResult?.error || 'Unknown error'
+          }, '*');
+        }
+      });
+      break;
+      
+    case 'GET_QUERY_IDS':
+      console.log('LinkedIn CRM: Requesting queryIds from background...');
+      chrome.runtime.sendMessage({ type: 'GET_QUERY_IDS' }, (queryIds) => {
+        console.log('LinkedIn CRM: Got queryIds response:', queryIds);
+        if (chrome.runtime.lastError) {
+          console.error('LinkedIn CRM: sendMessage error:', chrome.runtime.lastError);
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'QUERY_IDS_ERROR',
+            error: chrome.runtime.lastError.message
+          }, '*');
+        } else {
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'QUERY_IDS_RESULT',
+            data: queryIds
+          }, '*');
+        }
+      });
+      break;
+      
+    case 'SET_CONFIG':
+      Object.assign(CONFIG, event.data.config);
+      window.postMessage({
+        source: 'linkedin-crm-extension',
+        type: 'CONFIG_SET',
+        data: CONFIG
+      }, '*');
+      break;
+  }
+});
+
+// Expose extension ID for debugging
+try {
+  window.__linkedinCrmExtensionId = chrome.runtime.id;
+  console.log('LinkedIn CRM: Extension ID exposed:', chrome.runtime.id);
+} catch (e) {
+  // Ignore
+}
+
+console.log('LinkedIn CRM: Page API ready - use window.postMessage to test');
