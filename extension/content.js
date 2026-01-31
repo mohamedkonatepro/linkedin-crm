@@ -513,9 +513,19 @@ function setupMessageObserver() {
   const observer = new MutationObserver((mutations) => {
     // Debounce: only trigger once per batch of mutations
     clearTimeout(observer.debounceTimer);
-    observer.debounceTimer = setTimeout(() => {
+    observer.debounceTimer = setTimeout(async () => {
       console.log('LinkedIn CRM: Messages changed, syncing...');
-      performFullSync();
+      const result = await performFullSync();
+      
+      // Check for new messages and notify
+      checkForNewMessages();
+      
+      // Also notify parent window of the sync
+      window.postMessage({
+        source: 'linkedin-crm-extension',
+        type: 'REALTIME_SYNC',
+        data: result
+      }, '*');
     }, 1000);
   });
   
@@ -679,8 +689,234 @@ window.addEventListener('message', async (event) => {
         data: CONFIG
       }, '*');
       break;
+      
+    case 'SEND_MESSAGE':
+      console.log('LinkedIn CRM: Sending message...', event.data.text);
+      sendMessageToLinkedIn(event.data.text)
+        .then(result => {
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'SEND_MESSAGE_RESULT',
+            data: result
+          }, '*');
+        })
+        .catch(err => {
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'SEND_MESSAGE_ERROR',
+            error: err.message
+          }, '*');
+        });
+      break;
+      
+    case 'CLICK_CONVERSATION':
+      console.log('LinkedIn CRM: Clicking conversation...', event.data.index);
+      clickConversation(event.data.index)
+        .then(result => {
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'CLICK_CONVERSATION_RESULT',
+            data: result
+          }, '*');
+        })
+        .catch(err => {
+          window.postMessage({
+            source: 'linkedin-crm-extension',
+            type: 'CLICK_CONVERSATION_ERROR',
+            error: err.message
+          }, '*');
+        });
+      break;
   }
 });
+
+// =====================
+// SEND MESSAGE FUNCTION
+// =====================
+
+async function sendMessageToLinkedIn(text) {
+  if (!text || text.trim() === '') {
+    throw new Error('Message text is empty');
+  }
+  
+  console.log('LinkedIn CRM: Looking for input field...');
+  
+  // Find the message input field - try multiple selectors
+  const inputSelectors = [
+    'div.msg-form__contenteditable[contenteditable="true"]',
+    'div[data-placeholder*="message"]',
+    'div[data-placeholder*="Message"]',
+    'div[data-placeholder*="Rédigez"]',
+    'div.msg-form__msg-content-container div[contenteditable="true"]',
+    '.msg-form__contenteditable',
+    'div[contenteditable="true"][role="textbox"]',
+    '.msg-form__message-texteditor div[contenteditable="true"]',
+    'form.msg-form div[contenteditable="true"]'
+  ];
+  
+  let inputField = null;
+  for (const selector of inputSelectors) {
+    inputField = document.querySelector(selector);
+    if (inputField) {
+      console.log('LinkedIn CRM: Found input with selector:', selector);
+      break;
+    }
+  }
+  
+  if (!inputField) {
+    // Try to find any contenteditable in the message form area
+    const form = document.querySelector('.msg-form, form[class*="msg"]');
+    if (form) {
+      inputField = form.querySelector('div[contenteditable="true"]');
+    }
+  }
+  
+  if (!inputField) {
+    throw new Error('Message input field not found. Make sure a conversation is open.');
+  }
+  
+  // Focus the input
+  inputField.focus();
+  await delay(200);
+  
+  // Clear existing content
+  inputField.innerHTML = '';
+  inputField.textContent = '';
+  
+  // Insert text using different methods
+  // Method 1: execCommand
+  document.execCommand('insertText', false, text);
+  
+  // Method 2: Set directly if execCommand didn't work
+  if (!inputField.textContent.includes(text)) {
+    inputField.textContent = text;
+  }
+  
+  // Method 3: Create a text node
+  if (!inputField.textContent.includes(text)) {
+    inputField.appendChild(document.createTextNode(text));
+  }
+  
+  // Trigger input events to notify LinkedIn
+  const inputEvent = new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' });
+  inputField.dispatchEvent(inputEvent);
+  inputField.dispatchEvent(new Event('change', { bubbles: true }));
+  inputField.dispatchEvent(new Event('keyup', { bubbles: true }));
+  
+  console.log('LinkedIn CRM: Text inserted, looking for send button...');
+  
+  // Wait a bit for LinkedIn to process and enable send button
+  await delay(800);
+  
+  // Find send button - try multiple approaches
+  const sendButtonSelectors = [
+    'button.msg-form__send-button',
+    'button.msg-form__send-btn',
+    'button[type="submit"].msg-form__send-button',
+    '.msg-form__send-button',
+    'button.msg-form__right-actions-send-button',
+    'form.msg-form button[type="submit"]'
+  ];
+  
+  let sendButton = null;
+  for (const selector of sendButtonSelectors) {
+    const btn = document.querySelector(selector);
+    if (btn) {
+      console.log('LinkedIn CRM: Found button with selector:', selector, 'disabled:', btn.disabled);
+      if (!btn.disabled) {
+        sendButton = btn;
+        break;
+      }
+    }
+  }
+  
+  // Try to find button by text content
+  if (!sendButton) {
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+      const btnText = btn.textContent.toLowerCase();
+      if ((btnText.includes('envoyer') || btnText.includes('send')) && !btn.disabled) {
+        console.log('LinkedIn CRM: Found send button by text');
+        sendButton = btn;
+        break;
+      }
+    }
+  }
+  
+  if (!sendButton) {
+    // List all buttons for debugging
+    const debugButtons = document.querySelectorAll('.msg-form button, form[class*="msg"] button');
+    console.log('LinkedIn CRM: Available buttons:', debugButtons.length);
+    debugButtons.forEach((btn, i) => {
+      console.log(`  Button ${i}: class="${btn.className}" disabled=${btn.disabled} text="${btn.textContent.substring(0, 30)}"`);
+    });
+    throw new Error('Send button not found or all buttons are disabled');
+  }
+  
+  // Click send
+  console.log('LinkedIn CRM: Clicking send button...');
+  sendButton.click();
+  
+  console.log('LinkedIn CRM: Message sent!');
+  
+  // Wait for message to be sent
+  await delay(1500);
+  
+  // Trigger a sync to update the message list
+  await performFullSync();
+  
+  return { success: true, text };
+}
+
+// =====================
+// CLICK CONVERSATION FUNCTION
+// =====================
+
+async function clickConversation(index) {
+  const conversations = document.querySelectorAll(SELECTORS.conversationItem);
+  
+  if (index < 0 || index >= conversations.length) {
+    throw new Error(`Conversation index ${index} out of range (0-${conversations.length - 1})`);
+  }
+  
+  const conv = conversations[index];
+  conv.click();
+  
+  // Wait for messages to load
+  await delay(1500);
+  
+  // Sync to get new messages
+  const result = await performFullSync();
+  
+  return { success: true, index, messages: result?.messages?.length || 0 };
+}
+
+// =====================
+// REAL-TIME UPDATES
+// =====================
+
+// Notify parent window when new messages arrive
+function notifyNewMessages(data) {
+  window.postMessage({
+    source: 'linkedin-crm-extension',
+    type: 'NEW_MESSAGES',
+    data: data
+  }, '*');
+}
+
+// Enhanced message observer for real-time updates
+let lastMessageCount = 0;
+function checkForNewMessages() {
+  const messages = scrapeMessages();
+  if (messages.length > lastMessageCount && lastMessageCount > 0) {
+    console.log('LinkedIn CRM: New messages detected!', messages.length - lastMessageCount);
+    notifyNewMessages({
+      newCount: messages.length - lastMessageCount,
+      messages: messages.slice(-5) // Last 5 messages
+    });
+  }
+  lastMessageCount = messages.length;
+}
 
 // Expose extension ID for debugging
 try {
