@@ -385,87 +385,33 @@ async function fetchAllMessages() {
 // =====================
 
 function transformAPIConversations(apiConversations) {
-  console.log('🔄 Transforming conversations, first raw:', apiConversations[0]);
-  
   return apiConversations.map((conv, index) => {
-    // LinkedIn GraphQL API structure
-    const lastMessage = conv.lastActivityAt || conv.lastReadAt || conv.createdAt;
+    // LinkedIn API structure varies, try to extract common fields
+    const participants = conv.participants || conv['*participants'] || [];
+    const lastMessage = conv.lastActivityAt || conv.lastReadAt;
     
-    // Try multiple ways to get participant info
+    // Try to get participant info
     let participantName = 'Unknown';
     let participantPicture = null;
-    let linkedinId = null;
     
-    // Method 0: Enriched participant data from background.js (BEST)
-    if (conv.participantName) {
-      participantName = conv.participantName;
-      participantPicture = conv.participantAvatar;
-      linkedinId = conv.participantLinkedinId;
-    }
-    
-    // Method 1: participantFirstNames (old API)
-    if (participantName === 'Unknown' && conv.participantFirstNames && Object.keys(conv.participantFirstNames).length > 0) {
+    if (conv.participantFirstNames) {
       participantName = Object.values(conv.participantFirstNames).join(', ');
-    }
-    
-    // Method 2: conversationParticipants (GraphQL)
-    if (participantName === 'Unknown' && conv.conversationParticipants) {
+    } else if (conv.conversationParticipants) {
       const parts = conv.conversationParticipants;
-      participantName = parts.map(p => p.firstName || p.name || p.title).filter(Boolean).join(', ');
+      participantName = parts.map(p => p.firstName || p.name).filter(Boolean).join(', ');
     }
     
-    // Method 3: *participants reference (GraphQL)
-    if (participantName === 'Unknown' && conv['*participants']) {
-      const parts = conv['*participants'];
-      if (Array.isArray(parts) && parts.length > 0) {
-        // These might be URNs, extract IDs
-        linkedinId = parts[0];
-      }
-    }
-    
-    // Method 4: title field (some GraphQL responses have this)
-    if (participantName === 'Unknown' && conv.title) {
-      participantName = conv.title;
-    }
-    
-    // Method 5: Check for groupChat name
-    if (participantName === 'Unknown' && conv.groupChat?.name) {
-      participantName = conv.groupChat.name;
-    }
-    
-    // Method 6: Extract from backendUrn if available
-    if (!linkedinId && conv.backendUrn) {
-      linkedinId = conv.backendUrn;
-    }
-    
-    // Get last message content
-    let lastMessagePreview = '';
-    if (conv.lastMessage?.body?.text) {
-      lastMessagePreview = conv.lastMessage.body.text;
-    } else if (conv.lastMessage?.body) {
-      lastMessagePreview = conv.lastMessage.body;
-    } else if (conv.lastReadMessage?.body?.text) {
-      lastMessagePreview = conv.lastReadMessage.body.text;
-    }
-    
-    const transformed = {
+    return {
       id: conv.entityUrn || conv['*conversation'] || `conv-${index}`,
       entityUrn: conv.entityUrn,
-      threadId: conv.entityUrn?.split(':').pop() || conv._fullUrn || `thread-${index}`,
-      linkedinId: linkedinId,
       name: participantName,
       avatarUrl: participantPicture,
-      lastMessagePreview: lastMessagePreview,
+      lastMessagePreview: conv.lastMessage?.body || '',
       lastMessageTime: lastMessage ? new Date(lastMessage).toISOString() : null,
       unreadCount: conv.unreadCount || 0,
       isStarred: conv.starred || false,
-      isUnread: conv.unreadCount > 0,
-      _fullUrn: conv._fullUrn,
       raw: conv, // Keep raw data for debugging
     };
-    
-    console.log(`📬 Conv ${index}:`, participantName, transformed.threadId);
-    return transformed;
   });
 }
 

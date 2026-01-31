@@ -277,44 +277,11 @@ async function fetchConversations(start = 0, count = 20) {
       console.log('📬 First conversation structure:', JSON.stringify(conversations[0], null, 2));
     }
     
-    // Build a map of participants from included data
-    const participantMap = new Map();
-    for (const item of data.included || []) {
-      if (item.$type === 'com.linkedin.voyager.dash.identity.profile.Profile' ||
-          item.$type === 'com.linkedin.messenger.MessagingParticipant') {
-        const id = item.entityUrn || item['*participant'];
-        participantMap.set(id, {
-          name: item.firstName ? `${item.firstName} ${item.lastName || ''}`.trim() : item.name,
-          headline: item.headline || item.occupation,
-          avatarUrl: item.profilePicture?.displayImageReference?.url || 
-                     item.picture?.rootUrl || 
-                     item.picture?.['com.linkedin.common.VectorImage']?.rootUrl,
-          linkedinId: item.publicIdentifier || item.entityUrn,
-        });
-      }
-    }
-    
-    console.log('👥 Found participants:', participantMap.size, [...participantMap.keys()].slice(0, 3));
-    
-    // Store in cache with full URN for messages and participant info
+    // Store in cache with full URN for messages
     for (const conv of conversations) {
       // Build full msg_conversation URN for message fetching
       const convId = conv.entityUrn || conv['*conversation'];
       conv._fullUrn = `urn:li:msg_conversation:(${userUrn},${convId.split(':').pop()})`;
-      
-      // Try to enrich with participant info
-      const participantUrns = conv['*participants'] || [];
-      for (const pUrn of participantUrns) {
-        const participant = participantMap.get(pUrn);
-        if (participant && participant.name) {
-          conv.participantName = participant.name;
-          conv.participantHeadline = participant.headline;
-          conv.participantAvatar = participant.avatarUrl;
-          conv.participantLinkedinId = participant.linkedinId;
-          break; // Use first participant (usually the other person)
-        }
-      }
-      
       capturedData.conversations.set(convId, conv);
     }
     
