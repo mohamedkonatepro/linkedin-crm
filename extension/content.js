@@ -1,6 +1,6 @@
 /**
  * LinkedIn CRM Sync - Content Script
- * Scrapes LinkedIn Messaging DOM for conversations and messages
+ * Uses LinkedIn API (not DOM scraping) for reliable data extraction
  */
 
 console.log('🔌 LinkedIn CRM Content Script loaded on:', window.location.href);
@@ -25,7 +25,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
       
     case 'CHECK_IFRAME':
-      // Check if there's a LinkedIn iframe on this page
       const iframe = document.querySelector('iframe[src*="linkedin.com/messaging"]');
       sendResponse({ hasIframe: !!iframe });
       break;
@@ -42,7 +41,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       performFullSync()
         .then(result => sendResponse(result))
         .catch(err => sendResponse({ ok: false, error: err.message }));
-      return true; // Keep channel open for async
+      return true;
       
     default:
       sendResponse({ error: 'Unknown message type' });
@@ -50,8 +49,103 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // =====================
-// DOM SCRAPING
+// API-BASED SYNC
 // =====================
+
+async function performFullSync() {
+  console.log('🔄 Starting API-based sync with config:', config);
+  
+  try {
+    // Step 1: Get conversations via background script (API)
+    sendProgress(0, 100, 'conversations');
+    console.log('📬 Fetching conversations via API...');
+    
+    const convResponse = await chrome.runtime.sendMessage({
+      type: 'FETCH_ALL_CONVERSATIONS'
+    });
+    
+    if (!convResponse.ok) {
+      throw new Error(convResponse.error || 'Failed to fetch conversations');
+    }
+    
+    const apiConversations = convResponse.data.slice(0, config.convLimit);
+    console.log(`📬 Got ${apiConversations.length} conversations from API`);
+    
+    // Step 2: Transform conversations
+    const conversations = apiConversations.map((conv, i) => {
+      const participant = conv._participantName || 'Unknown';
+      return {
+        threadId: conv.entityUrn || conv._fullUrn || `conv-${i}`,
+        linkedinId: conv._participantId || null,
+        name: participant,
+        avatarUrl: conv._participantPicture || null,
+        headline: conv._participantHeadline || '',
+        lastMessagePreview: conv.lastMessage?.body?.text || '',
+        lastMessageTime: conv.lastActivityAt ? new Date(conv.lastActivityAt).toISOString() : null,
+        isUnread: (conv.unreadCount || 0) > 0,
+        isStarred: conv.starred || false,
+        messages: []
+      };
+    });
+    
+    sendProgress(30, 100, 'conversations');
+    
+    // Step 3: Fetch messages for each conversation
+    let totalMessages = 0;
+    for (let i = 0; i < conversations.length; i++) {
+      const conv = conversations[i];
+      sendProgress(30 + Math.round((i / conversations.length) * 60), 100, 'messages');
+      
+      console.log(`💬 Fetching messages for ${conv.name} (${i + 1}/${conversations.length})...`);
+      
+      try {
+        const msgResponse = await chrome.runtime.sendMessage({
+          type: 'FETCH_MESSAGES',
+          conversationUrn: conv.threadId,
+          count: config.msgLimit
+        });
+        
+        if (msgResponse.ok && msgResponse.data?.messages) {
+          conv.messages = msgResponse.data.messages.map((msg, j) => ({
+            urn: msg.entityUrn || `msg-${i}-${j}`,
+            content: msg.body || '',
+            isFromMe: msg.sender?.includes('ACoAAD_LQawB') || false, // Max Leroux's profile ID
+            timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : null,
+            senderName: null
+          }));
+          totalMessages += conv.messages.length;
+          console.log(`   ✅ ${conv.messages.length} messages`);
+        }
+      } catch (e) {
+        console.error(`   ❌ Error fetching messages for ${conv.name}:`, e);
+        conv.messages = [];
+      }
+      
+      // Small delay to avoid rate limiting
+      await delay(200);
+    }
+    
+    sendProgress(95, 100, 'syncing');
+    
+    // Step 4: Send to CRM server
+    if (config.apiUrl) {
+      console.log('📤 Sending to CRM server...');
+      await syncToServer(conversations);
+    }
+    
+    sendProgress(100, 100, 'done');
+    
+    return {
+      ok: true,
+      conversations,
+      totalMessages
+    };
+    
+  } catch (error) {
+    console.error('❌ Sync failed:', error);
+    throw error;
+  }
+}
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -66,349 +160,20 @@ function sendProgress(current, total, phase) {
   });
 }
 
-async function performFullSync() {
-  console.log('🔄 Starting full sync with config:', config);
-  
-  // Make sure we're on LinkedIn Messaging
-  if (!window.location.href.includes('linkedin.com/messaging')) {
-    // Try to find the messaging page or navigate to it
-    const messagingLink = document.querySelector('a[href*="/messaging"]');
-    if (messagingLink) {
-      messagingLink.click();
-      await delay(2000);
-    }
-  }
-  
-  // Wait for conversation list to load
-  await waitForElement('.msg-conversations-container__conversations-list, .msg-conversation-listitem');
-  
-  // Scrape conversations AND their messages together
-  const conversations = await scrapeConversationsWithMessages(config.convLimit, config.msgLimit);
-  console.log(`📬 Scraped ${conversations.length} conversations`);
-  
-  let totalMessages = 0;
-  for (const conv of conversations) {
-    totalMessages += (conv.messages || []).length;
-  }
-  
-  // Send to CRM server
-  if (config.apiUrl) {
-    try {
-      await syncToServer(conversations);
-      console.log('✅ Synced to server');
-    } catch (e) {
-      console.error('❌ Server sync failed:', e);
-    }
-  }
-  
-  return {
-    ok: true,
-    conversations,
-    totalMessages,
-  };
-}
-
-async function waitForElement(selector, timeout = 10000) {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    const el = document.querySelector(selector);
-    if (el) return el;
-    await delay(200);
-  }
-  throw new Error(`Element not found: ${selector}`);
-}
-
-async function scrapeConversationsWithMessages(convLimit, msgLimit) {
-  const conversations = [];
-  const convItems = document.querySelectorAll('.msg-conversation-listitem, .msg-conversations-container__conversations-list li');
-  
-  const total = Math.min(convItems.length, convLimit);
-  console.log(`🔍 Found ${convItems.length} conversation items, will process ${total}`);
-  
-  for (let i = 0; i < total; i++) {
-    sendProgress(i + 1, total, 'conversations');
-    
-    const item = convItems[i];
-    if (!item) continue;
-    
-    try {
-      // Extract conversation data BEFORE clicking (to get the name for unique ID)
-      const conv = extractConversationData(item);
-      if (!conv) continue;
-      
-      // Click on conversation to load messages
-      console.log(`📬 Clicking conversation ${i + 1}: ${conv.name}...`);
-      item.click();
-      
-      // Wait for the thread to actually change by checking the header name
-      const expectedName = conv.name;
-      let attempts = 0;
-      let threadChanged = false;
-      
-      while (attempts < 10 && !threadChanged) {
-        await delay(300);
-        attempts++;
-        
-        // Check if the thread header shows the correct name
-        const headerName = document.querySelector(
-          '.msg-thread__link-to-profile, ' +
-          '.msg-s-message-list-container h2, ' +
-          '.msg-overlay-conversation-bubble__title, ' +
-          '[data-control-name="view_profile"] span'
-        )?.textContent?.trim();
-        
-        console.log(`   👀 Attempt ${attempts}: header shows "${headerName}", expecting "${expectedName}"`);
-        
-        if (headerName && headerName.toLowerCase().includes(expectedName.toLowerCase().split(' ')[0])) {
-          threadChanged = true;
-          console.log(`   ✅ Thread loaded for ${expectedName}`);
-        }
-      }
-      
-      if (!threadChanged) {
-        console.log(`   ⚠️ Thread may not have loaded correctly for ${expectedName}`);
-      }
-      
-      await delay(500); // Extra wait for messages to render
-      
-      // Get thread ID - try multiple sources
-      let threadId = null;
-      
-      // 1. From URL
-      const urlMatch = window.location.href.match(/thread\/([^/]+)/);
-      if (urlMatch) {
-        threadId = urlMatch[1];
-        console.log(`   📍 ThreadId from URL: ${threadId}`);
-      }
-      
-      // 2. From conversation item data attributes
-      if (!threadId) {
-        const dataId = item.getAttribute('id') || 
-                       item.querySelector('[id]')?.getAttribute('id');
-        if (dataId) {
-          threadId = dataId;
-          console.log(`   📍 ThreadId from item ID: ${threadId}`);
-        }
-      }
-      
-      // 3. Generate unique ID based on name + index
-      if (!threadId) {
-        threadId = `conv-${conv.name.replace(/\s+/g, '-').toLowerCase()}-${i}`;
-        console.log(`   📍 ThreadId generated: ${threadId}`);
-      }
-      
-      conv.threadId = threadId;
-      
-      // IMMEDIATELY scrape messages while this conversation is open
-      const messages = await scrapeMessagesForConversation(conv, msgLimit);
-      conv.messages = messages;
-      
-      console.log(`✅ Conv ${i + 1}: ${conv.name} - ${messages.length} msgs (id: ${threadId})`);
-      conversations.push(conv);
-      
-    } catch (e) {
-      console.error(`❌ Error processing conversation ${i}:`, e);
-    }
-    
-    // Delay before next conversation
-    await delay(500);
-  }
-  
-  // Debug: log final data
-  console.log('📊 Final conversations data:');
-  conversations.forEach((c, i) => {
-    console.log(`  ${i + 1}. ${c.name} (${c.threadId}): ${c.messages?.length || 0} messages`);
-  });
-  
-  return conversations;
-}
-
-function extractConversationData(item) {
-  // Get participant name
-  const nameEl = item.querySelector(
-    '.msg-conversation-listitem__participant-names, ' +
-    '.msg-conversation-card__participant-names, ' +
-    'h3'
-  );
-  const name = nameEl?.textContent?.trim() || 'Unknown';
-  
-  // Get avatar
-  const avatarEl = item.querySelector('img.presence-entity__image, img.msg-facepile-grid__img');
-  const avatarUrl = avatarEl?.src || null;
-  
-  // Get last message preview
-  const previewEl = item.querySelector(
-    '.msg-conversation-listitem__message-snippet, ' +
-    '.msg-conversation-card__message-snippet, ' +
-    'p'
-  );
-  const lastMessagePreview = previewEl?.textContent?.trim() || '';
-  
-  // Get timestamp
-  const timeEl = item.querySelector('time');
-  const lastMessageTime = timeEl?.getAttribute('datetime') || timeEl?.textContent || null;
-  
-  // Check if unread
-  const isUnread = item.classList.contains('msg-conversation-listitem--unread') ||
-                   item.querySelector('.msg-conversation-listitem__unread-count') !== null;
-  
-  // Check if starred
-  const isStarred = item.querySelector('.msg-conversation-listitem__starred-icon') !== null;
-  
-  // Get LinkedIn ID from profile link
-  const profileLink = document.querySelector('.msg-thread__link-to-profile, .msg-s-message-group__profile-link');
-  const linkedinId = profileLink?.href?.match(/\/in\/([^/]+)/)?.[1] || null;
-  
-  return {
-    name,
-    avatarUrl,
-    lastMessagePreview,
-    lastMessageTime,
-    isUnread,
-    isStarred,
-    linkedinId,
-  };
-}
-
-async function scrapeMessagesForConversation(conv, limit) {
-  const messages = [];
-  
-  // Wait for messages to load
-  await delay(800);
-  
-  // Try multiple selectors for message containers
-  const messageEls = document.querySelectorAll(
-    '.msg-s-event-listitem, ' +
-    '.msg-s-message-list__event, ' +
-    '[class*="msg-s-message-group"], ' +
-    'li[class*="msg-s-event"]'
-  );
-  
-  console.log(`📨 Found ${messageEls.length} message elements`);
-  
-  const total = Math.min(messageEls.length, limit);
-  
-  // Get messages (most recent first)
-  for (let i = Math.max(0, messageEls.length - total); i < messageEls.length; i++) {
-    const msgEl = messageEls[i];
-    if (!msgEl) continue;
-    
-    try {
-      const msg = extractMessageData(msgEl, i);
-      if (msg && msg.content) {
-        messages.push(msg);
-      }
-    } catch (e) {
-      console.error('Error extracting message:', e);
-    }
-  }
-  
-  return messages;
-}
-
-function extractMessageData(msgEl, index) {
-  // Get message content - try multiple selectors
-  let content = '';
-  const contentSelectors = [
-    '.msg-s-event-listitem__body',
-    '.msg-s-message-group__content',
-    'p.msg-s-event-listitem__message-body',
-    'p[class*="msg-s-event-listitem"]',
-    '.msg-s-event-listitem__message-bubble p',
-    'p[dir="ltr"]',
-    '.msg-s-event-listitem p'
-  ];
-  
-  for (const selector of contentSelectors) {
-    const el = msgEl.querySelector(selector);
-    if (el?.textContent?.trim()) {
-      content = el.textContent.trim();
-      break;
-    }
-  }
-  
-  // Fallback: get all paragraph text
-  if (!content) {
-    const paragraphs = msgEl.querySelectorAll('p');
-    for (const p of paragraphs) {
-      const text = p.textContent?.trim();
-      if (text && text.length > 0 && !text.includes('Envoyé le')) {
-        content = text;
-        break;
-      }
-    }
-  }
-  
-  // Get sender name
-  const senderSelectors = [
-    '.msg-s-message-group__name',
-    '.msg-s-event-listitem__sender-name',
-    'a[class*="msg-s-message-group__profile-link"] span',
-    '.msg-s-event-listitem a[href*="/in/"] span'
-  ];
-  
-  let senderName = null;
-  for (const selector of senderSelectors) {
-    const el = msgEl.querySelector(selector);
-    if (el?.textContent?.trim()) {
-      senderName = el.textContent.trim();
-      break;
-    }
-  }
-  
-  // Get timestamp
-  const timeEl = msgEl.querySelector('time');
-  const timestamp = timeEl?.getAttribute('datetime') || timeEl?.textContent?.trim() || null;
-  
-  // Check if from me (multiple detection methods)
-  // LinkedIn shows sent indicator (checkmarks) for messages you sent
-  const hasSentIndicator = msgEl.querySelector(
-    '[data-test-message-sent-indicator], ' +
-    '.msg-s-message-list-content__sent-confirmation, ' +
-    'img[alt*="Envoyé"], ' +
-    'img[alt*="Lu"], ' +
-    'img[alt*="Sent"], ' +
-    'img[alt*="Read"], ' +
-    '.msg-s-event-listitem__message-bubble svg'  // Checkmark icon
-  ) !== null;
-  
-  const hasOutgoingClass = 
-    msgEl.classList.contains('msg-s-event-listitem--outgoing') ||
-    msgEl.querySelector('.msg-s-event-listitem__message-bubble--outgoing') !== null;
-  
-  // Check for "Envoyé le" text pattern (French) or "Sent" (English)
-  const fullText = msgEl.textContent || '';
-  const hasSentText = fullText.includes('Envoyé le') || fullText.includes('Sent');
-  
-  const isFromMe = hasSentIndicator || hasOutgoingClass || hasSentText;
-  
-  // Generate unique ID
-  const urn = msgEl.getAttribute('data-event-urn') || 
-              msgEl.getAttribute('data-id') || 
-              `msg-${index}-${Date.now()}`;
-  
-  return {
-    content,
-    senderName,
-    timestamp,
-    isFromMe,
-    urn,
-  };
-}
-
 // =====================
 // SERVER SYNC
 // =====================
 
 async function syncToServer(conversations) {
   const data = {
-    type: 'dom_sync',
+    type: 'api_sync',
     timestamp: new Date().toISOString(),
     conversations: conversations.map(conv => ({
       threadId: conv.threadId,
       linkedinId: conv.linkedinId,
       name: conv.name,
       avatarUrl: conv.avatarUrl,
+      headline: conv.headline,
       lastMessagePreview: conv.lastMessagePreview,
       lastMessageTime: conv.lastMessageTime,
       isUnread: conv.isUnread,
@@ -430,16 +195,12 @@ async function syncToServer(conversations) {
     currentConversation: null,
   };
   
-  console.log('📤 Sending to server:', config.apiUrl);
-  console.log('📤 Conversations:', data.conversations.map(c => `${c.name} (${c.threadId})`));
-  console.log('📤 Messages by conversation:');
-  const msgByConv = {};
-  data.messages.forEach(m => {
-    msgByConv[m.conversationId] = (msgByConv[m.conversationId] || 0) + 1;
+  console.log('📤 Sync data:', {
+    conversations: data.conversations.length,
+    messages: data.messages.length,
+    byConv: data.conversations.map(c => `${c.name}: ${data.messages.filter(m => m.conversationId === c.threadId).length} msgs`)
   });
-  console.log(msgByConv);
   
-  // Use background script to make the request (avoids CORS issues)
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({
       type: 'SYNC_TO_SERVER',
@@ -456,10 +217,9 @@ async function syncToServer(conversations) {
 }
 
 // =====================
-// AUTO-INIT
+// INIT
 // =====================
 
-// If we're on LinkedIn Messaging, set up observers for real-time updates
 if (window.location.href.includes('linkedin.com/messaging')) {
-  console.log('📍 On LinkedIn Messaging - ready for sync');
+  console.log('📍 On LinkedIn Messaging - ready for API sync');
 }

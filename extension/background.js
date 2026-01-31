@@ -1,12 +1,60 @@
 /**
- * LinkedIn CRM Sync - Background Service Worker (Simplified)
- * Handles server communication and cookie management
+ * LinkedIn CRM Sync - Background Service Worker
+ * Handles LinkedIn API calls and server communication
  */
 
 console.log('🚀 LinkedIn CRM Background Script loaded');
 
+// Auto-discovered queryIds from LinkedIn's own requests
+let discoveredQueryIds = {
+  conversations: null,
+  messages: null,
+  lastUpdated: null,
+};
+
+let mailboxUrn = null;
+
+// Load persisted queryIds on startup
+chrome.storage.local.get(['discoveredQueryIds'], (result) => {
+  if (result.discoveredQueryIds) {
+    discoveredQueryIds = { ...discoveredQueryIds, ...result.discoveredQueryIds };
+    console.log('📦 Loaded persisted queryIds:', discoveredQueryIds);
+  }
+});
+
 // =====================
-// COOKIE MANAGEMENT
+// NETWORK INTERCEPTION - Capture queryIds
+// =====================
+
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  (details) => {
+    // Auto-discover queryIds from LinkedIn's own requests
+    if (details.url.includes('voyagerMessagingGraphQL/graphql')) {
+      const url = new URL(details.url);
+      const queryId = url.searchParams.get('queryId');
+      
+      if (queryId) {
+        if (queryId.startsWith('messengerConversations.')) {
+          discoveredQueryIds.conversations = queryId;
+          discoveredQueryIds.lastUpdated = Date.now();
+          console.log('🔍 Auto-discovered conversations queryId:', queryId);
+        } else if (queryId.startsWith('messengerMessages.')) {
+          discoveredQueryIds.messages = queryId;
+          discoveredQueryIds.lastUpdated = Date.now();
+          console.log('🔍 Auto-discovered messages queryId:', queryId);
+        }
+        
+        // Persist
+        chrome.storage.local.set({ discoveredQueryIds });
+      }
+    }
+  },
+  { urls: ["https://*.linkedin.com/*"] },
+  ["requestHeaders"]
+);
+
+// =====================
+// LINKEDIN API CLIENT
 // =====================
 
 async function getLinkedInCookies() {
@@ -21,6 +69,163 @@ async function getLinkedInCookies() {
   });
 }
 
+async function makeLinkedInRequest(endpoint) {
+  const cookies = await getLinkedInCookies();
+  const cookieString = Object.entries(cookies)
+    .map(([name, value]) => `${name}=${value}`)
+    .join('; ');
+  
+  const csrfToken = cookies['JSESSIONID']?.replace(/"/g, '');
+  
+  if (!csrfToken) {
+    throw new Error('No CSRF token. Visit LinkedIn first.');
+  }
+  
+  const url = endpoint.startsWith('http') 
+    ? endpoint 
+    : `https://www.linkedin.com${endpoint}`;
+  
+  console.log('🌐 API request:', url.substring(0, 100));
+  
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'accept': 'application/vnd.linkedin.normalized+json+2.1',
+      'cookie': cookieString,
+      'csrf-token': csrfToken,
+      'x-li-lang': 'fr_FR',
+      'x-restli-protocol-version': '2.0.0',
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`LinkedIn API error: ${response.status}`);
+  }
+  
+  return response.json();
+}
+
+async function getMailboxUrn() {
+  if (mailboxUrn) return mailboxUrn;
+  
+  try {
+    const meData = await makeLinkedInRequest('/voyager/api/me');
+    const miniProfile = meData.included?.find(item => 
+      item.$type === 'com.linkedin.voyager.identity.shared.MiniProfile'
+    );
+    
+    const dashUrn = miniProfile?.dashEntityUrn;
+    const fsUrn = miniProfile?.entityUrn;
+    
+    if (dashUrn) {
+      mailboxUrn = dashUrn;
+    } else if (fsUrn) {
+      mailboxUrn = fsUrn.replace('fs_miniProfile', 'fsd_profile');
+    }
+    
+    console.log('📋 Mailbox URN:', mailboxUrn);
+    return mailboxUrn;
+  } catch (e) {
+    console.error('❌ Error getting mailbox URN:', e);
+    return null;
+  }
+}
+
+// =====================
+// API METHODS
+// =====================
+
+async function fetchConversations() {
+  if (!discoveredQueryIds.conversations) {
+    throw new Error('QueryId not discovered. Navigate to LinkedIn Messaging first.');
+  }
+  
+  const userUrn = await getMailboxUrn();
+  if (!userUrn) throw new Error('Could not get mailbox URN');
+  
+  const queryId = discoveredQueryIds.conversations;
+  const variables = `(mailboxUrn:${encodeURIComponent(userUrn)})`;
+  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
+  
+  const data = await makeLinkedInRequest(endpoint);
+  
+  // Parse conversations
+  const conversations = data.included?.filter(item => 
+    item.$type === 'com.linkedin.messenger.Conversation'
+  ) || [];
+  
+  // Build participant map
+  const participantMap = new Map();
+  for (const item of data.included || []) {
+    if (item.$type === 'com.linkedin.messenger.MessagingParticipant') {
+      participantMap.set(item.entityUrn, item);
+    }
+  }
+  
+  // Enrich conversations
+  for (const conv of conversations) {
+    conv._fullUrn = `urn:li:msg_conversation:(${userUrn},${conv.entityUrn.split(':').pop()})`;
+    
+    const participantUrns = conv['*conversationParticipants'] || [];
+    for (const pUrn of participantUrns) {
+      if (pUrn.includes(userUrn.split(':').pop())) continue;
+      
+      const participant = participantMap.get(pUrn);
+      if (participant) {
+        const member = participant.participantType?.member;
+        if (member) {
+          const firstName = member.firstName?.text || '';
+          const lastName = member.lastName?.text || '';
+          conv._participantName = `${firstName} ${lastName}`.trim();
+          conv._participantHeadline = member.headline?.text || '';
+          const pictureRoot = member.profilePicture?.rootUrl || '';
+          const pictureSegment = member.profilePicture?.artifacts?.[0]?.fileIdentifyingUrlPathSegment || '';
+          conv._participantPicture = pictureRoot && pictureSegment ? `${pictureRoot}${pictureSegment}` : '';
+          conv._participantId = participant.entityUrn;
+          break;
+        }
+      }
+    }
+  }
+  
+  console.log(`📬 Fetched ${conversations.length} conversations`);
+  return conversations;
+}
+
+async function fetchMessages(conversationUrn, count = 20) {
+  if (!discoveredQueryIds.messages) {
+    throw new Error('Messages queryId not discovered. Open a conversation first.');
+  }
+  
+  const userUrn = await getMailboxUrn();
+  let fullConversationUrn = conversationUrn;
+  
+  if (!conversationUrn.includes('msg_conversation')) {
+    const convId = conversationUrn.includes('urn:li:') 
+      ? conversationUrn.split(':').pop() 
+      : conversationUrn;
+    fullConversationUrn = `urn:li:msg_conversation:(${userUrn},${convId})`;
+  }
+  
+  const queryId = discoveredQueryIds.messages;
+  const encodedUrn = encodeURIComponent(fullConversationUrn).replace(/\(/g, '%28').replace(/\)/g, '%29');
+  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodedUrn})`;
+  
+  const data = await makeLinkedInRequest(endpoint);
+  
+  const messages = (data.included || []).filter(item => 
+    item.$type === 'com.linkedin.messenger.Message'
+  ).map(msg => ({
+    entityUrn: msg.entityUrn,
+    body: msg.body?.text || '',
+    createdAt: msg.deliveredAt || msg.createdAt,
+    sender: msg['*sender']
+  }));
+  
+  console.log(`💬 Fetched ${messages.length} messages for ${conversationUrn.substring(0, 30)}`);
+  return { messages };
+}
+
 // =====================
 // MESSAGE HANDLERS
 // =====================
@@ -29,30 +234,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('📨 Background received:', message.type);
   
   switch (message.type) {
+    case 'FETCH_ALL_CONVERSATIONS':
+      fetchConversations()
+        .then(data => sendResponse({ ok: true, data }))
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true;
+      
+    case 'FETCH_MESSAGES':
+      fetchMessages(message.conversationUrn, message.count)
+        .then(data => sendResponse({ ok: true, data }))
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true;
+      
     case 'SYNC_TO_SERVER':
       syncToServer(message.apiUrl, message.data)
         .then(result => sendResponse({ ok: true, result }))
         .catch(err => sendResponse({ ok: false, error: err.message }));
-      return true; // Keep channel open for async
-      
-    case 'GET_COOKIES':
-      getLinkedInCookies()
-        .then(cookies => sendResponse({ ok: true, cookies }))
-        .catch(err => sendResponse({ ok: false, error: err.message }));
       return true;
+      
+    case 'GET_QUERY_IDS':
+      sendResponse({
+        queryIds: discoveredQueryIds,
+        hasConversations: !!discoveredQueryIds.conversations,
+        hasMessages: !!discoveredQueryIds.messages,
+      });
+      break;
       
     default:
       sendResponse({ error: 'Unknown message type' });
   }
 });
 
-// =====================
-// SERVER SYNC
-// =====================
-
 async function syncToServer(apiUrl, data) {
-  console.log('📤 Syncing to server:', apiUrl);
-  
   const response = await fetch(`${apiUrl}/api/sync`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -60,25 +273,15 @@ async function syncToServer(apiUrl, data) {
   });
   
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Server error: ${response.status} - ${errorText}`);
+    throw new Error(`Server error: ${response.status}`);
   }
   
   return response.json();
 }
 
-// =====================
-// INITIAL SETUP
-// =====================
-
-// Log when extension is installed
-chrome.runtime.onInstalled.addListener((details) => {
-  console.log('📦 Extension installed:', details.reason);
-  
-  // Set default config
-  chrome.storage.local.set({
-    apiUrl: 'http://localhost:3000',
-    convLimit: 50,
-    msgLimit: 20,
-  });
+// Initial setup
+getLinkedInCookies().then(cookies => {
+  if (cookies.JSESSIONID) {
+    console.log('🔑 CSRF token ready');
+  }
 });

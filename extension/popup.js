@@ -277,9 +277,31 @@ msgLimit.addEventListener('change', saveConfig);
 // INIT
 // =====================
 
+async function checkQueryIds() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_QUERY_IDS' });
+    const statusEl = document.getElementById('queryIdStatus');
+    const textEl = document.getElementById('queryIdText');
+    
+    if (!response.hasConversations || !response.hasMessages) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = '#fef3c7';
+      textEl.textContent = '⚠️ Navigue sur LinkedIn Messaging et ouvre une conversation pour capturer les queryIds';
+    } else {
+      statusEl.style.display = 'block';
+      statusEl.style.background = '#dcfce7';
+      textEl.textContent = '✅ QueryIds capturés - prêt à synchroniser';
+      setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+    }
+  } catch (e) {
+    console.log('QueryIds check failed:', e);
+  }
+}
+
 async function init() {
   await loadConfig();
   await checkConnection();
+  await checkQueryIds();
   
   // Re-check connection every 2 seconds
   setInterval(checkConnection, 2000);
