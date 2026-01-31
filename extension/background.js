@@ -267,35 +267,21 @@ async function fetchConversations(start = 0, count = 20) {
       item.$type === 'com.linkedin.messenger.Conversation'
     ) || [];
     
-    // Build maps for participants and profiles
+    // Build map for MessagingParticipant (contains name, picture, etc.)
     const participantMap = new Map();
-    const profileMap = new Map();
     
     for (const item of data.included || []) {
-      // MessagingMember contains participant reference
-      if (item.$type === 'com.linkedin.messenger.MessagingMember') {
+      // MessagingParticipant contains the actual participant data
+      if (item.$type === 'com.linkedin.messenger.MessagingParticipant') {
         participantMap.set(item.entityUrn, item);
-      }
-      // MiniProfile contains name and picture
-      if (item.$type === 'com.linkedin.voyager.messaging.MessagingMember') {
-        participantMap.set(item.entityUrn, item);
-      }
-      // Profile data
-      if (item.$type?.includes('MiniProfile') || item.$type?.includes('Profile')) {
-        profileMap.set(item.entityUrn, item);
-        // Also map by publicIdentifier
-        if (item.publicIdentifier) {
-          profileMap.set(item.publicIdentifier, item);
-        }
       }
     }
     
-    console.log('👥 Participants found:', participantMap.size, 'Profiles found:', profileMap.size);
+    console.log('👥 MessagingParticipants found:', participantMap.size);
     if (participantMap.size > 0) {
-      console.log('👥 First participant:', JSON.stringify([...participantMap.values()][0], null, 2));
-    }
-    if (profileMap.size > 0) {
-      console.log('👤 First profile:', JSON.stringify([...profileMap.values()][0], null, 2));
+      const first = [...participantMap.values()][0];
+      console.log('👥 First MessagingParticipant keys:', Object.keys(first));
+      console.log('👥 First MessagingParticipant:', JSON.stringify(first, null, 2));
     }
     
     // Log conversation structure for debugging
@@ -309,22 +295,27 @@ async function fetchConversations(start = 0, count = 20) {
       const convId = conv.entityUrn || conv['*conversation'];
       conv._fullUrn = `urn:li:msg_conversation:(${userUrn},${convId.split(':').pop()})`;
       
-      // Try to get participant info from *participants
-      const participantUrns = conv['*participants'] || [];
+      // Try to get participant info from *conversationParticipants
+      const participantUrns = conv['*conversationParticipants'] || conv['*participants'] || [];
       for (const pUrn of participantUrns) {
         // Skip if it's the current user
         if (pUrn.includes(userUrn.split(':').pop())) continue;
         
-        const member = participantMap.get(pUrn);
-        if (member) {
-          // Get profile from member's *miniProfile reference
-          const profileUrn = member['*miniProfile'] || member['*profile'];
-          const profile = profileMap.get(profileUrn);
-          if (profile) {
-            conv._participantName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
-            conv._participantHeadline = profile.occupation || profile.headline;
-            conv._participantPicture = profile.picture?.['com.linkedin.common.VectorImage']?.rootUrl;
-            conv._participantId = profile.publicIdentifier || profileUrn;
+        const participant = participantMap.get(pUrn);
+        if (participant) {
+          // MessagingParticipant has name directly or in participantType
+          const name = participant.name?.text || participant.name;
+          const headline = participant.headline?.text || participant.headline;
+          const picture = participant.picture?.rootUrl || 
+                         participant.profilePicture?.displayImageReference?.url ||
+                         participant.picture?.['com.linkedin.common.VectorImage']?.rootUrl;
+          
+          if (name) {
+            conv._participantName = name;
+            conv._participantHeadline = headline;
+            conv._participantPicture = picture;
+            conv._participantId = participant.entityUrn;
+            console.log(`✅ Enriched conv with participant: ${name}`);
             break;
           }
         }
