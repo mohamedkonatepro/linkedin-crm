@@ -168,28 +168,92 @@ function generateUUID() {
 // API METHODS
 // =====================
 
-async function fetchConversations(start = 0, count = 20) {
-  const endpoint = `/voyager/api/messaging/conversations?keyVersion=LEGACY_INBOX&start=${start}&count=${count}`;
+// Store mailbox URN (user's profile URN)
+let mailboxUrn = null;
+
+async function getMailboxUrn() {
+  if (mailboxUrn) return mailboxUrn;
   
+  // Get current user's profile URN via /me endpoint
   try {
-    const data = await makeLinkedInRequest(endpoint);
-    console.log('📬 Fetched conversations:', data);
+    const meData = await makeLinkedInRequest('/voyager/api/me');
+    // The miniProfile contains the URN
+    const profileUrn = meData.miniProfile?.entityUrn || meData.entityUrn;
+    if (profileUrn) {
+      // Convert from urn:li:fs_miniProfile to urn:li:fsd_profile
+      mailboxUrn = profileUrn.replace('fs_miniProfile', 'fsd_profile');
+      console.log('📋 Got mailbox URN:', mailboxUrn);
+    }
+    return mailboxUrn;
+  } catch (e) {
+    console.error('❌ Error getting mailbox URN:', e);
+    return null;
+  }
+}
+
+async function fetchConversations(start = 0, count = 20) {
+  // First, try the new GraphQL endpoint
+  try {
+    const userUrn = await getMailboxUrn();
+    if (!userUrn) {
+      throw new Error('Could not get mailbox URN');
+    }
     
-    // Parse and store conversations
-    if (data.elements) {
-      for (const conv of data.elements) {
-        capturedData.conversations.set(conv.entityUrn, conv);
-      }
+    // New GraphQL endpoint (LinkedIn changed their API!)
+    const queryId = 'messengerConversations.9501074288a12f3ae9e3c7ea243bccbf';
+    const variables = `(query:(predicateUnions:List((conversationCategoryPredicate:(category:INBOX)))),count:${count},mailboxUrn:${encodeURIComponent(userUrn)})`;
+    const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
+    
+    const data = await makeLinkedInRequest(endpoint);
+    console.log('📬 Fetched conversations (GraphQL):', data);
+    
+    // Parse GraphQL response - conversations are in data.included
+    const conversations = data.included?.filter(item => 
+      item.$type === 'com.linkedin.messenger.Conversation'
+    ) || [];
+    
+    // Also get participant info
+    const participants = data.included?.filter(item =>
+      item.$type === 'com.linkedin.messenger.MessagingParticipant' ||
+      item.$type === 'com.linkedin.voyager.dash.identity.profile.Profile'
+    ) || [];
+    
+    // Store in cache
+    for (const conv of conversations) {
+      capturedData.conversations.set(conv.entityUrn || conv['*conversation'], conv);
     }
     
     return {
-      conversations: data.elements || [],
-      paging: data.paging,
-      total: data.paging?.total || 0,
+      conversations: conversations,
+      participants: participants,
+      paging: data.data?.messengerConversationsByCategoryConnection?.paging,
+      total: conversations.length,
     };
-  } catch (e) {
-    console.error('❌ Error fetching conversations:', e);
-    throw e;
+  } catch (graphqlError) {
+    console.warn('⚠️ GraphQL failed, trying legacy endpoint:', graphqlError.message);
+    
+    // Fallback to legacy endpoint (might still work in some cases)
+    const endpoint = `/voyager/api/messaging/conversations?keyVersion=LEGACY_INBOX&start=${start}&count=${count}`;
+    
+    try {
+      const data = await makeLinkedInRequest(endpoint);
+      console.log('📬 Fetched conversations (legacy):', data);
+      
+      if (data.elements) {
+        for (const conv of data.elements) {
+          capturedData.conversations.set(conv.entityUrn, conv);
+        }
+      }
+      
+      return {
+        conversations: data.elements || [],
+        paging: data.paging,
+        total: data.paging?.total || 0,
+      };
+    } catch (e) {
+      console.error('❌ Error fetching conversations:', e);
+      throw e;
+    }
   }
 }
 
