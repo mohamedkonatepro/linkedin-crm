@@ -132,30 +132,50 @@ async function scrapeConversationsWithMessages(convLimit, msgLimit) {
     if (!item) continue;
     
     try {
-      // Click on conversation to load it
-      console.log(`📬 Clicking conversation ${i + 1}...`);
-      item.click();
-      await delay(1000); // Wait for URL to update and messages to load
-      
-      // Get thread ID from URL IMMEDIATELY after click
-      const urlMatch = window.location.href.match(/thread\/([^/]+)/);
-      const threadId = urlMatch ? urlMatch[1] : `conv-${i}-${Date.now()}`;
-      
-      console.log(`📬 Conv ${i + 1}: URL threadId = ${threadId}`);
-      
-      // Extract conversation data
+      // Extract conversation data BEFORE clicking (to get the name for unique ID)
       const conv = extractConversationData(item);
-      if (conv) {
-        conv.threadId = threadId;
-        
-        // IMMEDIATELY scrape messages while this conversation is open
-        console.log(`💬 Scraping messages for conv ${i + 1} (${conv.name})...`);
-        const messages = await scrapeMessagesForConversation(conv, msgLimit);
-        conv.messages = messages;
-        
-        console.log(`✅ Conv ${i + 1}: ${conv.name} - ${messages.length} messages (threadId: ${threadId})`);
-        conversations.push(conv);
+      if (!conv) continue;
+      
+      // Click on conversation to load messages
+      console.log(`📬 Clicking conversation ${i + 1}: ${conv.name}...`);
+      item.click();
+      await delay(1200); // Wait for messages to load
+      
+      // Get thread ID - try multiple sources
+      let threadId = null;
+      
+      // 1. From URL
+      const urlMatch = window.location.href.match(/thread\/([^/]+)/);
+      if (urlMatch) {
+        threadId = urlMatch[1];
+        console.log(`   📍 ThreadId from URL: ${threadId}`);
       }
+      
+      // 2. From conversation item data attributes
+      if (!threadId) {
+        const dataId = item.getAttribute('id') || 
+                       item.querySelector('[id]')?.getAttribute('id');
+        if (dataId) {
+          threadId = dataId;
+          console.log(`   📍 ThreadId from item ID: ${threadId}`);
+        }
+      }
+      
+      // 3. Generate unique ID based on name + index
+      if (!threadId) {
+        threadId = `conv-${conv.name.replace(/\s+/g, '-').toLowerCase()}-${i}`;
+        console.log(`   📍 ThreadId generated: ${threadId}`);
+      }
+      
+      conv.threadId = threadId;
+      
+      // IMMEDIATELY scrape messages while this conversation is open
+      const messages = await scrapeMessagesForConversation(conv, msgLimit);
+      conv.messages = messages;
+      
+      console.log(`✅ Conv ${i + 1}: ${conv.name} - ${messages.length} msgs (id: ${threadId})`);
+      conversations.push(conv);
+      
     } catch (e) {
       console.error(`❌ Error processing conversation ${i}:`, e);
     }
@@ -163,6 +183,12 @@ async function scrapeConversationsWithMessages(convLimit, msgLimit) {
     // Delay before next conversation
     await delay(500);
   }
+  
+  // Debug: log final data
+  console.log('📊 Final conversations data:');
+  conversations.forEach((c, i) => {
+    console.log(`  ${i + 1}. ${c.name} (${c.threadId}): ${c.messages?.length || 0} messages`);
+  });
   
   return conversations;
 }
@@ -374,7 +400,14 @@ async function syncToServer(conversations) {
     currentConversation: null,
   };
   
-  console.log('📤 Sending to server:', config.apiUrl, data);
+  console.log('📤 Sending to server:', config.apiUrl);
+  console.log('📤 Conversations:', data.conversations.map(c => `${c.name} (${c.threadId})`));
+  console.log('📤 Messages by conversation:');
+  const msgByConv = {};
+  data.messages.forEach(m => {
+    msgByConv[m.conversationId] = (msgByConv[m.conversationId] || 0) + 1;
+  });
+  console.log(msgByConv);
   
   // Use background script to make the request (avoids CORS issues)
   return new Promise((resolve, reject) => {
