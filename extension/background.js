@@ -409,7 +409,9 @@ async function fetchMessages(conversationUrn, createdBefore = null, count = 100)
     }
   }
   
-  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodeURIComponent(fullConversationUrn)})`;
+  // LinkedIn requires parentheses to be encoded as %28 and %29
+  const encodedUrn = encodeURIComponent(fullConversationUrn).replace(/\(/g, '%28').replace(/\)/g, '%29');
+  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodedUrn})`;
   
   try {
     const data = await makeLinkedInRequest(endpoint);
