@@ -153,6 +153,7 @@ async function makeLinkedInRequest(endpoint, options = {}) {
   const headers = {
     'accept': 'application/vnd.linkedin.normalized+json+2.1',
     'accept-language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'cookie': cookieString, // Required for service worker - cookies not sent automatically
     'csrf-token': csrfToken,
     'x-li-lang': 'fr_FR',
     'x-li-page-instance': 'urn:li:page:messaging_thread_detail;' + generateUUID(),
