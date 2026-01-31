@@ -385,33 +385,66 @@ async function fetchAllMessages() {
 // =====================
 
 function transformAPIConversations(apiConversations) {
+  console.log('🔄 Transforming', apiConversations.length, 'conversations');
+  if (apiConversations.length > 0) {
+    console.log('🔄 First conv keys:', Object.keys(apiConversations[0]));
+  }
+  
   return apiConversations.map((conv, index) => {
-    // LinkedIn API structure varies, try to extract common fields
-    const participants = conv.participants || conv['*participants'] || [];
     const lastMessage = conv.lastActivityAt || conv.lastReadAt;
     
-    // Try to get participant info
-    let participantName = 'Unknown';
-    let participantPicture = null;
+    // Use enriched data from background.js (prefixed with _)
+    let participantName = conv._participantName || 'Unknown';
+    let participantPicture = conv._participantPicture || null;
+    let participantId = conv._participantId || null;
     
-    if (conv.participantFirstNames) {
-      participantName = Object.values(conv.participantFirstNames).join(', ');
-    } else if (conv.conversationParticipants) {
-      const parts = conv.conversationParticipants;
-      participantName = parts.map(p => p.firstName || p.name).filter(Boolean).join(', ');
+    // Fallback methods if enriched data not available
+    if (participantName === 'Unknown') {
+      // Method 1: participantFirstNames (legacy API)
+      if (conv.participantFirstNames && Object.keys(conv.participantFirstNames).length > 0) {
+        participantName = Object.values(conv.participantFirstNames).join(', ');
+      }
+      // Method 2: conversationParticipants
+      else if (conv.conversationParticipants) {
+        participantName = conv.conversationParticipants
+          .map(p => p.firstName || p.name)
+          .filter(Boolean)
+          .join(', ');
+      }
+      // Method 3: title field
+      else if (conv.title) {
+        participantName = conv.title;
+      }
     }
     
-    return {
-      id: conv.entityUrn || conv['*conversation'] || `conv-${index}`,
+    // Get last message preview
+    let lastMessagePreview = '';
+    if (conv.lastMessage?.body?.text) {
+      lastMessagePreview = conv.lastMessage.body.text;
+    } else if (typeof conv.lastMessage?.body === 'string') {
+      lastMessagePreview = conv.lastMessage.body;
+    }
+    
+    const result = {
+      id: conv.entityUrn || `conv-${index}`,
       entityUrn: conv.entityUrn,
+      threadId: conv._fullUrn || conv.entityUrn,
+      linkedinId: participantId,
       name: participantName,
       avatarUrl: participantPicture,
-      lastMessagePreview: conv.lastMessage?.body || '',
+      headline: conv._participantHeadline || '',
+      lastMessagePreview: lastMessagePreview,
       lastMessageTime: lastMessage ? new Date(lastMessage).toISOString() : null,
       unreadCount: conv.unreadCount || 0,
       isStarred: conv.starred || false,
-      raw: conv, // Keep raw data for debugging
+      isUnread: (conv.unreadCount || 0) > 0,
     };
+    
+    if (index === 0) {
+      console.log('🔄 First transformed:', result);
+    }
+    
+    return result;
   });
 }
 

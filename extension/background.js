@@ -260,34 +260,83 @@ async function fetchConversations(start = 0, count = 20) {
     
     const data = await makeLinkedInRequest(endpoint);
     console.log('📬 Fetched conversations (GraphQL):', data);
+    console.log('📬 All $types in response:', [...new Set((data.included || []).map(i => i.$type))]);
     
     // Parse GraphQL response - conversations are in data.included
     const conversations = data.included?.filter(item => 
       item.$type === 'com.linkedin.messenger.Conversation'
     ) || [];
     
-    // Also get participant info
-    const participants = data.included?.filter(item =>
-      item.$type === 'com.linkedin.messenger.MessagingParticipant' ||
-      item.$type === 'com.linkedin.voyager.dash.identity.profile.Profile'
-    ) || [];
+    // Build maps for participants and profiles
+    const participantMap = new Map();
+    const profileMap = new Map();
+    
+    for (const item of data.included || []) {
+      // MessagingMember contains participant reference
+      if (item.$type === 'com.linkedin.messenger.MessagingMember') {
+        participantMap.set(item.entityUrn, item);
+      }
+      // MiniProfile contains name and picture
+      if (item.$type === 'com.linkedin.voyager.messaging.MessagingMember') {
+        participantMap.set(item.entityUrn, item);
+      }
+      // Profile data
+      if (item.$type?.includes('MiniProfile') || item.$type?.includes('Profile')) {
+        profileMap.set(item.entityUrn, item);
+        // Also map by publicIdentifier
+        if (item.publicIdentifier) {
+          profileMap.set(item.publicIdentifier, item);
+        }
+      }
+    }
+    
+    console.log('👥 Participants found:', participantMap.size, 'Profiles found:', profileMap.size);
+    if (participantMap.size > 0) {
+      console.log('👥 First participant:', JSON.stringify([...participantMap.values()][0], null, 2));
+    }
+    if (profileMap.size > 0) {
+      console.log('👤 First profile:', JSON.stringify([...profileMap.values()][0], null, 2));
+    }
     
     // Log conversation structure for debugging
     if (conversations.length > 0) {
       console.log('📬 First conversation structure:', JSON.stringify(conversations[0], null, 2));
     }
     
-    // Store in cache with full URN for messages
+    // Enrich conversations with participant data
     for (const conv of conversations) {
       // Build full msg_conversation URN for message fetching
       const convId = conv.entityUrn || conv['*conversation'];
       conv._fullUrn = `urn:li:msg_conversation:(${userUrn},${convId.split(':').pop()})`;
+      
+      // Try to get participant info from *participants
+      const participantUrns = conv['*participants'] || [];
+      for (const pUrn of participantUrns) {
+        // Skip if it's the current user
+        if (pUrn.includes(userUrn.split(':').pop())) continue;
+        
+        const member = participantMap.get(pUrn);
+        if (member) {
+          // Get profile from member's *miniProfile reference
+          const profileUrn = member['*miniProfile'] || member['*profile'];
+          const profile = profileMap.get(profileUrn);
+          if (profile) {
+            conv._participantName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
+            conv._participantHeadline = profile.occupation || profile.headline;
+            conv._participantPicture = profile.picture?.['com.linkedin.common.VectorImage']?.rootUrl;
+            conv._participantId = profile.publicIdentifier || profileUrn;
+            break;
+          }
+        }
+      }
+      
       capturedData.conversations.set(convId, conv);
     }
     
     return {
       conversations: conversations,
-      participants: participants,
+      participants: [...participantMap.values()],
+      profiles: [...profileMap.values()],
       paging: data.data?.messengerConversationsByCategoryConnection?.paging,
       total: conversations.length,
     };
