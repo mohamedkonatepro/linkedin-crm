@@ -16,6 +16,14 @@ let capturedData = {
   profiles: new Map(),
 };
 
+// Auto-discovered queryIds from LinkedIn's own requests
+let discoveredQueryIds = {
+  conversations: null,  // messengerConversations.xxxxx
+  messages: null,       // messengerMessages.xxxxx
+  mailboxCounts: null,  // messengerMailboxCounts.xxxxx
+  lastUpdated: null,
+};
+
 // LinkedIn API endpoints we care about
 const API_PATTERNS = {
   conversations: /\/voyager\/api\/messaging\/conversations/,
@@ -41,6 +49,31 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
         linkedInAuth.csrfToken = header.value;
         linkedInAuth.lastUpdated = Date.now();
         console.log('🔑 Captured CSRF token');
+      }
+    }
+    
+    // Auto-discover queryIds from LinkedIn's own requests
+    if (details.url.includes('voyagerMessagingGraphQL/graphql')) {
+      const url = new URL(details.url);
+      const queryId = url.searchParams.get('queryId');
+      
+      if (queryId) {
+        if (queryId.startsWith('messengerConversations.')) {
+          discoveredQueryIds.conversations = queryId;
+          discoveredQueryIds.lastUpdated = Date.now();
+          console.log('🔍 Auto-discovered conversations queryId:', queryId);
+        } else if (queryId.startsWith('messengerMessages.')) {
+          discoveredQueryIds.messages = queryId;
+          discoveredQueryIds.lastUpdated = Date.now();
+          console.log('🔍 Auto-discovered messages queryId:', queryId);
+        } else if (queryId.startsWith('messengerMailboxCounts.')) {
+          discoveredQueryIds.mailboxCounts = queryId;
+          discoveredQueryIds.lastUpdated = Date.now();
+          console.log('🔍 Auto-discovered mailboxCounts queryId:', queryId);
+        }
+        
+        // Persist discovered queryIds
+        chrome.storage.local.set({ discoveredQueryIds });
       }
     }
     
@@ -218,8 +251,10 @@ async function fetchConversations(start = 0, count = 20) {
       throw new Error('Could not get mailbox URN');
     }
     
-    // New GraphQL endpoint (LinkedIn changed their API! - updated 2026-01-31)
-    const queryId = 'messengerConversations.0d5e6781bbee71c3e51c8843c6519f48';
+    // Use auto-discovered queryId, fallback to last known working one
+    const queryId = discoveredQueryIds.conversations || 'messengerConversations.0d5e6781bbee71c3e51c8843c6519f48';
+    console.log('📬 Using conversations queryId:', queryId, discoveredQueryIds.conversations ? '(auto-discovered)' : '(fallback)');
+    
     const variables = `(mailboxUrn:${encodeURIComponent(userUrn)})`;
     const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
     
@@ -299,8 +334,10 @@ async function fetchAllConversations(onProgress) {
 async function fetchMessages(conversationUrn, createdBefore = null, count = 100) {
   console.log('💬 Fetching messages for:', conversationUrn);
   
-  // New GraphQL endpoint for messages
-  const queryId = 'messengerMessages.5846eeb71c981f11e0134cb6626cc314';
+  // Use auto-discovered queryId, fallback to last known working one
+  const queryId = discoveredQueryIds.messages || 'messengerMessages.5846eeb71c981f11e0134cb6626cc314';
+  console.log('💬 Using messages queryId:', queryId, discoveredQueryIds.messages ? '(auto-discovered)' : '(fallback)');
+  
   const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodeURIComponent(conversationUrn)})`;
   
   try {
@@ -408,6 +445,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       break;
       
+    case 'GET_QUERY_IDS':
+      sendResponse({
+        queryIds: discoveredQueryIds,
+        hasConversations: !!discoveredQueryIds.conversations,
+        hasMessages: !!discoveredQueryIds.messages,
+      });
+      break;
+      
     case 'FETCH_CONVERSATIONS':
       fetchConversations(message.start || 0, message.count || 20)
         .then(data => sendResponse({ ok: true, data }))
@@ -488,6 +533,14 @@ async function syncToServer(apiUrl, data) {
 // =====================
 
 console.log('🚀 LinkedIn CRM Background Script loaded');
+
+// Load persisted queryIds from storage
+chrome.storage.local.get(['discoveredQueryIds'], (result) => {
+  if (result.discoveredQueryIds) {
+    discoveredQueryIds = { ...discoveredQueryIds, ...result.discoveredQueryIds };
+    console.log('📦 Loaded persisted queryIds:', discoveredQueryIds);
+  }
+});
 
 // Initial cookie capture
 getLinkedInCookies().then(cookies => {
