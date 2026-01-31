@@ -146,13 +146,21 @@ async function getLinkedInCookies() {
 async function makeLinkedInRequest(endpoint, options = {}) {
   const cookies = await getLinkedInCookies();
   
+  // Debug: log available cookies
+  console.log('🍪 Available cookies:', Object.keys(cookies));
+  console.log('🍪 Has li_at:', !!cookies['li_at']);
+  console.log('🍪 Has JSESSIONID:', !!cookies['JSESSIONID']);
+  
   // Build cookie string
   const cookieString = Object.entries(cookies)
     .map(([name, value]) => `${name}=${value}`)
     .join('; ');
   
+  console.log('🍪 Cookie string length:', cookieString.length);
+  
   // Get CSRF token from cookies
   const csrfToken = cookies['JSESSIONID']?.replace(/"/g, '') || linkedInAuth.csrfToken;
+  console.log('🔑 CSRF token:', csrfToken ? csrfToken.substring(0, 20) + '...' : 'NONE');
   
   if (!csrfToken) {
     throw new Error('No CSRF token available. Visit LinkedIn first.');
@@ -183,6 +191,7 @@ async function makeLinkedInRequest(endpoint, options = {}) {
     : `https://www.linkedin.com${endpoint}`;
   
   console.log('🌐 Making LinkedIn API request:', url);
+  console.log('🌐 Headers:', JSON.stringify(headers, null, 2));
   
   const response = await fetch(url, {
     method: options.method || 'GET',
@@ -191,7 +200,11 @@ async function makeLinkedInRequest(endpoint, options = {}) {
     credentials: 'include',
   });
   
+  console.log('🌐 Response status:', response.status);
+  
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ LinkedIn API error response:', errorText.substring(0, 500));
     throw new Error(`LinkedIn API error: ${response.status} ${response.statusText}`);
   }
   
@@ -345,7 +358,7 @@ async function fetchConversations(start = 0, count = 20) {
     return {
       conversations: conversations,
       participants: [...participantMap.values()],
-      profiles: [...profileMap.values()],
+      profiles: [], // No separate profiles in GraphQL response
       paging: data.data?.messengerConversationsByCategoryConnection?.paging,
       total: conversations.length,
     };
