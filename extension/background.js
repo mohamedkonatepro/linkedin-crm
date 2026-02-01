@@ -440,6 +440,38 @@ async function syncToServer(apiUrl, data) {
 }
 
 // =====================
+// NORMALIZE CONVERSATION URN
+// =====================
+
+async function normalizeConversationUrn(conversationUrn) {
+  const userUrn = await getMailboxUrn();
+  if (!userUrn) throw new Error('Could not get mailbox URN');
+  
+  // If already in correct format, return as-is
+  if (conversationUrn.includes('urn:li:msg_conversation:(')) {
+    console.log('📝 ConversationUrn already normalized:', conversationUrn.substring(0, 60));
+    return conversationUrn;
+  }
+  
+  // Extract threadId from various formats
+  let threadId = conversationUrn;
+  
+  // Format: urn:li:msg_conversation:THREAD_ID
+  if (conversationUrn.startsWith('urn:li:msg_conversation:')) {
+    threadId = conversationUrn.replace('urn:li:msg_conversation:', '');
+  }
+  // Format: urn:li:messagingThread:THREAD_ID
+  else if (conversationUrn.startsWith('urn:li:messagingThread:')) {
+    threadId = conversationUrn.replace('urn:li:messagingThread:', '');
+  }
+  
+  // Build correct format: urn:li:msg_conversation:(mailboxUrn,threadId)
+  const normalizedUrn = `urn:li:msg_conversation:(${userUrn},${threadId})`;
+  console.log('📝 Normalized conversationUrn:', normalizedUrn.substring(0, 80));
+  return normalizedUrn;
+}
+
+// =====================
 // SEND MESSAGE via LinkedIn Dash API
 // =====================
 
@@ -454,6 +486,9 @@ async function sendMessage(conversationUrn, messageText) {
   const userUrn = await getMailboxUrn();
   if (!userUrn) throw new Error('Could not get mailbox URN');
   
+  // Normalize the conversation URN
+  const normalizedConversationUrn = await normalizeConversationUrn(conversationUrn);
+  
   // Generate unique tokens
   const originToken = crypto.randomUUID();
   const trackingBytes = new Uint8Array(16);
@@ -467,7 +502,7 @@ async function sendMessage(conversationUrn, messageText) {
         text: messageText
       },
       renderContentUnions: [],
-      conversationUrn: conversationUrn,
+      conversationUrn: normalizedConversationUrn,
       originToken: originToken
     },
     mailboxUrn: userUrn,
@@ -605,6 +640,9 @@ async function sendMessageWithAttachment(conversationUrn, messageText, attachmen
   if (!csrfToken) throw new Error('No CSRF token');
   if (!userUrn) throw new Error('Could not get mailbox URN');
   
+  // Normalize the conversation URN
+  const normalizedConversationUrn = await normalizeConversationUrn(conversationUrn);
+  
   // Build renderContentUnions based on attachment type
   const renderContentUnions = [];
   if (attachmentType === 'STILLIMAGE') {
@@ -624,7 +662,7 @@ async function sendMessageWithAttachment(conversationUrn, messageText, attachmen
     message: {
       body: { attributes: [], text: messageText || '' },
       renderContentUnions,
-      conversationUrn,
+      conversationUrn: normalizedConversationUrn,
       originToken: crypto.randomUUID()
     },
     mailboxUrn: userUrn,
@@ -632,7 +670,7 @@ async function sendMessageWithAttachment(conversationUrn, messageText, attachmen
     dedupeByClientGeneratedToken: false
   };
   
-  console.log('📤 Sending message with attachment...', { conversationUrn, attachmentUrn, attachmentType });
+  console.log('📤 Sending message with attachment...', { normalizedConversationUrn, attachmentUrn, attachmentType });
   console.log('📤 Body:', JSON.stringify(body, null, 2));
   
   const response = await fetch('https://www.linkedin.com/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage', {
