@@ -71,7 +71,8 @@ export default function CRMPage() {
           conversationId: m.conversationId || null,
           content: m.content || '',
           isFromMe: m.isFromMe || false,
-          timestamp: m.timestamp
+          timestamp: m.timestamp,
+          attachments: m.attachments || null
         }))
         
         setConversations(convs)
@@ -330,7 +331,41 @@ export default function CRMPage() {
                             : 'bg-gray-700 text-white'
                         }`}
                       >
-                        <p>{msg.content}</p>
+                        {/* Attachments */}
+                        {msg.attachments?.map((att: any, i: number) => (
+                          <div key={i} className="mb-2">
+                            {att.type === 'image' && (
+                              <img 
+                                src={att.url} 
+                                alt="Image" 
+                                className="max-w-full rounded-lg cursor-pointer hover:opacity-90"
+                                onClick={() => window.open(att.url, '_blank')}
+                              />
+                            )}
+                            {att.type === 'file' && (
+                              <a 
+                                href={att.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 p-2 bg-gray-600 rounded hover:bg-gray-500"
+                              >
+                                📎 {att.name || 'Fichier'}
+                                {att.size && <span className="text-xs opacity-70">({Math.round(att.size / 1024)} KB)</span>}
+                              </a>
+                            )}
+                            {att.type === 'audio' && (
+                              <audio controls className="w-full">
+                                <source src={att.url} type="audio/mpeg" />
+                              </audio>
+                            )}
+                            {att.type === 'video' && (
+                              <video controls className="max-w-full rounded-lg">
+                                <source src={att.url} type="video/mp4" />
+                              </video>
+                            )}
+                          </div>
+                        ))}
+                        {msg.content && <p>{msg.content}</p>}
                         {msg.timestamp && (
                           <p className="text-xs opacity-70 mt-1">{msg.timestamp}</p>
                         )}

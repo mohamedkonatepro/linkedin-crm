@@ -150,6 +150,7 @@ async function syncMessage(
         is_from_me: msg.isFromMe,
         sent_at: msg.timestamp || new Date().toISOString(),
         synced_at: new Date().toISOString(),
+        attachments: msg.attachments || null, // Store attachments as JSONB
       },
       { onConflict: 'linkedin_message_urn' }
     )

@@ -259,14 +259,59 @@ async function fetchMessages(conversationUrn, count = 20) {
         
         const data = await makeLinkedInRequest(endpoint);
         
-        const messages = (data.included || []).filter(item => 
+        // Handle both old format (data.included) and new format (data.data.messengerMessagesBySyncToken)
+        let rawMessages = data.included?.filter(item => 
           item.$type === 'com.linkedin.messenger.Message'
-        ).map(msg => ({
-          entityUrn: msg.entityUrn,
-          body: msg.body?.text || '',
-          createdAt: msg.deliveredAt || msg.createdAt,
-          sender: msg['*sender']
-        }));
+        ) || [];
+        
+        // New Dash format
+        if (data.data?.messengerMessagesBySyncToken?.elements) {
+          rawMessages = data.data.messengerMessagesBySyncToken.elements;
+        }
+        
+        const messages = rawMessages.map(msg => {
+          // Extract attachments from renderContent
+          const attachments = [];
+          for (const content of (msg.renderContent || [])) {
+            if (content.vectorImage?.rootUrl) {
+              attachments.push({
+                type: 'image',
+                url: content.vectorImage.rootUrl,
+                asset: content.vectorImage.digitalmediaAsset
+              });
+            }
+            if (content.file) {
+              attachments.push({
+                type: 'file',
+                name: content.file.name || 'file',
+                url: content.file.url,
+                size: content.file.byteSize
+              });
+            }
+            if (content.audio) {
+              attachments.push({
+                type: 'audio',
+                url: content.audio.url,
+                duration: content.audio.duration
+              });
+            }
+            if (content.video?.progressiveStreams?.[0]) {
+              attachments.push({
+                type: 'video',
+                url: content.video.progressiveStreams[0].streamingLocations?.[0]?.url
+              });
+            }
+          }
+          
+          return {
+            entityUrn: msg.entityUrn,
+            body: msg.body?.text || '',
+            createdAt: msg.deliveredAt || msg.createdAt,
+            sender: msg['*sender'] || msg.sender?.entityUrn,
+            senderName: msg.sender?.participantType?.member?.firstName?.text,
+            attachments: attachments.length > 0 ? attachments : undefined
+          };
+        });
         
         if (messages.length > 0) {
           console.log(`💬 Fetched ${messages.length} messages via GraphQL (queryId: ${queryId.substring(0, 25)}...)`);
