@@ -232,7 +232,10 @@ async function fetchConversations() {
     }
   }
   
-  console.log(`📬 Fetched ${conversations.length} conversations`);
+  // Sort by lastActivityAt (most recent first) to prioritize visible conversations
+  conversations.sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+  
+  console.log(`📬 Fetched ${conversations.length} conversations (sorted by recent activity)`);
   return conversations;
 }
 
