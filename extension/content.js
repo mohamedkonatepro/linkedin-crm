@@ -233,6 +233,7 @@ async function syncToServer(conversations) {
         isFromMe: msg.isFromMe,
         timestamp: msg.timestamp,
         urn: msg.urn,
+        attachments: msg.attachments || null,
         sender: {
           name: msg.senderName,
         },

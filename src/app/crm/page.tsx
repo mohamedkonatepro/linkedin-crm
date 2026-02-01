@@ -65,29 +65,18 @@ export default function CRMPage() {
           unreadCount: c.unreadCount || 0
         }))
         
-        // Extract messages from conversations (they're nested inside each conversation)
-        const allMsgs: any[] = []
-        for (const conv of (json.data.conversations || [])) {
-          const convId = conv.threadId || conv.id
-          console.log('Conv:', convId, 'has', conv.messages?.length || 0, 'messages')
-          for (const msg of (conv.messages || [])) {
-            allMsgs.push({
-              id: msg.urn || `msg-${allMsgs.length}`,
-              conversationId: convId,
-              content: msg.content || '',
-              isFromMe: msg.isFromMe || false,
-              timestamp: msg.timestamp,
-              attachments: msg.attachments || null
-            })
-          }
-        }
-        
-        console.log('Total messages:', allMsgs.length, 'Conversations:', convs.length)
-        console.log('Sample msg conversationId:', allMsgs[0]?.conversationId)
-        console.log('Sample conv id:', convs[0]?.id)
+        // Messages are sent flat in data.messages (not nested in conversations)
+        const msgs = (json.data.messages || []).map((m: any, i: number) => ({
+          id: m.urn || `msg-${i}`,
+          conversationId: m.conversationId || null,
+          content: m.content || '',
+          isFromMe: m.isFromMe || false,
+          timestamp: m.timestamp,
+          attachments: m.attachments || null
+        }))
         
         setConversations(convs)
-        setMessages(allMsgs)
+        setMessages(msgs)
         setLastSync(new Date().toLocaleTimeString('fr-FR'))
       }
     } catch (e) {
