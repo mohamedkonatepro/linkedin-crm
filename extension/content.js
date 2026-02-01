@@ -155,7 +155,8 @@ async function performFullSync() {
               content: msg.body || '',
               isFromMe,
               timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : null,
-              senderName: null
+              senderName: null,
+              attachments: msg.attachments || null // Include attachments!
             };
           });
           totalMessages += conv.messages.length;
