@@ -13,7 +13,11 @@ import {
   Settings,
   ChevronRight,
   Eye,
-  EyeOff
+  EyeOff,
+  Paperclip,
+  X,
+  Image as ImageIcon,
+  FileText
 } from 'lucide-react'
 
 interface Conversation {
@@ -32,6 +36,13 @@ interface Message {
   content: string
   isFromMe: boolean
   timestamp: string | null
+  attachments?: {
+    type: 'image' | 'file' | 'audio' | 'video'
+    url: string
+    name?: string
+    size?: number
+    duration?: number
+  }[] | null
 }
 
 export default function CRMPage() {
@@ -45,7 +56,10 @@ export default function CRMPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [newMessage, setNewMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [filePreview, setFilePreview] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch data from API
   const fetchData = useCallback(async () => {
@@ -98,9 +112,37 @@ export default function CRMPage() {
     setIsLoading(false)
   }
 
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    setSelectedFile(file)
+    
+    // Create preview for images
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setFilePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      setFilePreview(null)
+    }
+  }
+
+  // Clear selected file
+  const clearSelectedFile = () => {
+    setSelectedFile(null)
+    setFilePreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   // Send message via iframe to extension
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConvId || !iframeRef.current?.contentWindow) {
+    if ((!newMessage.trim() && !selectedFile) || !selectedConvId || !iframeRef.current?.contentWindow) {
       if (!iframeRef.current?.contentWindow) {
         alert('LinkedIn non connecté. Active l\'iframe avec le bouton 👁️')
       }
@@ -109,13 +151,46 @@ export default function CRMPage() {
     
     setIsSending(true)
     
-    // Send to iframe (extension will handle it)
-    iframeRef.current.contentWindow.postMessage({
+    // Prepare message payload
+    const payload: any = {
       source: 'linkedin-crm',
       type: 'SEND_MESSAGE',
       conversationUrn: selectedConvId,
       text: newMessage.trim()
-    }, '*')
+    }
+    
+    // If file selected, convert to base64 and include
+    if (selectedFile) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64 = (reader.result as string).split(',')[1]
+        payload.file = {
+          name: selectedFile.name,
+          type: selectedFile.type,
+          size: selectedFile.size,
+          base64: base64
+        }
+        
+        // Determine upload type
+        if (selectedFile.type.startsWith('image/')) {
+          payload.file.uploadType = 'MESSAGING_PHOTO_ATTACHMENT'
+          payload.file.mediaTypeFamily = 'STILLIMAGE'
+        } else if (selectedFile.type.startsWith('audio/')) {
+          payload.file.uploadType = 'MESSAGING_VOICE_ATTACHMENT'
+          payload.file.mediaTypeFamily = 'AUDIO'
+        } else {
+          payload.file.uploadType = 'MESSAGING_FILE_ATTACHMENT'
+          payload.file.mediaTypeFamily = 'DOCUMENT'
+        }
+        
+        // Send to iframe
+        iframeRef.current?.contentWindow?.postMessage(payload, '*')
+      }
+      reader.readAsDataURL(selectedFile)
+    } else {
+      // Send text-only message
+      iframeRef.current.contentWindow.postMessage(payload, '*')
+    }
     
     // Listen for response
     const handleResponse = (event: MessageEvent) => {
@@ -125,6 +200,7 @@ export default function CRMPage() {
         
         if (event.data.ok) {
           setNewMessage('')
+          clearSelectedFile()
           setTimeout(fetchData, 1000) // Refresh messages
         } else {
           alert('Erreur: ' + (event.data.error || 'Échec de l\'envoi'))
@@ -134,14 +210,14 @@ export default function CRMPage() {
     
     window.addEventListener('message', handleResponse)
     
-    // Timeout
+    // Timeout (longer for file uploads)
     setTimeout(() => {
       window.removeEventListener('message', handleResponse)
       if (isSending) {
         setIsSending(false)
         alert('Timeout - Vérifie que l\'extension est active')
       }
-    }, 10000)
+    }, selectedFile ? 30000 : 10000)
   }
 
   // Filter conversations
@@ -376,7 +452,51 @@ export default function CRMPage() {
 
                 {/* Input */}
                 <div className="p-4 border-t border-gray-700">
+                  {/* File preview */}
+                  {selectedFile && (
+                    <div className="mb-3 p-3 bg-gray-800 rounded-lg flex items-center gap-3">
+                      {filePreview ? (
+                        <img src={filePreview} alt="Preview" className="w-16 h-16 object-cover rounded" />
+                      ) : (
+                        <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
+                          <FileText className="w-8 h-8 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{selectedFile.name}</p>
+                        <p className="text-sm text-gray-400">
+                          {(selectedFile.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                      <button 
+                        onClick={clearSelectedFile}
+                        className="p-2 hover:bg-gray-700 rounded-lg"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  
                   <div className="flex gap-2">
+                    {/* Attach file button */}
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isSending}
+                      className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors disabled:opacity-50"
+                      title="Joindre un fichier"
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
+                    
                     <input
                       type="text"
                       placeholder="Écrire un message..."
@@ -393,7 +513,7 @@ export default function CRMPage() {
                     />
                     <button 
                       onClick={handleSendMessage}
-                      disabled={isSending || !newMessage.trim()}
+                      disabled={isSending || (!newMessage.trim() && !selectedFile)}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
                     >
                       {isSending ? (

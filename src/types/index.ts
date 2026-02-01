@@ -101,6 +101,13 @@ export interface SyncMessage {
     name: string | null
     avatarUrl: string | null
   }
+  attachments?: {
+    type: 'image' | 'file' | 'audio' | 'video'
+    url: string
+    name?: string
+    size?: number
+    duration?: number
+  }[] | null
 }
 
 export interface SyncData {

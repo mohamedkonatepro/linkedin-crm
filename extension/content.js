@@ -23,11 +23,27 @@ window.addEventListener('message', async (event) => {
   
   if (event.data.type === 'SEND_MESSAGE') {
     try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'SEND_MESSAGE',
-        conversationUrn: event.data.conversationUrn,
-        text: event.data.text
-      });
+      let response;
+      
+      // Check if there's a file attached
+      if (event.data.file) {
+        console.log('📎 File attached:', event.data.file.name, event.data.file.type);
+        response = await chrome.runtime.sendMessage({
+          type: 'SEND_MESSAGE_WITH_FILE',
+          conversationUrn: event.data.conversationUrn,
+          text: event.data.text || '',
+          fileData: event.data.file.base64,
+          filename: event.data.file.name,
+          mimeType: event.data.file.type
+        });
+      } else {
+        // Text-only message
+        response = await chrome.runtime.sendMessage({
+          type: 'SEND_MESSAGE',
+          conversationUrn: event.data.conversationUrn,
+          text: event.data.text
+        });
+      }
       
       window.parent.postMessage({
         source: 'linkedin-extension',
