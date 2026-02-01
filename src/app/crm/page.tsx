@@ -65,18 +65,24 @@ export default function CRMPage() {
           unreadCount: c.unreadCount || 0
         }))
         
-        // Transform messages - associate with conversation
-        const msgs = (json.data.messages || []).map((m: any, i: number) => ({
-          id: m.urn || `msg-${i}`,
-          conversationId: m.conversationId || null,
-          content: m.content || '',
-          isFromMe: m.isFromMe || false,
-          timestamp: m.timestamp,
-          attachments: m.attachments || null
-        }))
+        // Extract messages from conversations (they're nested inside each conversation)
+        const allMsgs: any[] = []
+        for (const conv of (json.data.conversations || [])) {
+          const convId = conv.threadId || conv.id
+          for (const msg of (conv.messages || [])) {
+            allMsgs.push({
+              id: msg.urn || `msg-${allMsgs.length}`,
+              conversationId: convId,
+              content: msg.content || '',
+              isFromMe: msg.isFromMe || false,
+              timestamp: msg.timestamp,
+              attachments: msg.attachments || null
+            })
+          }
+        }
         
         setConversations(convs)
-        setMessages(msgs)
+        setMessages(allMsgs)
         setLastSync(new Date().toLocaleTimeString('fr-FR'))
       }
     } catch (e) {
