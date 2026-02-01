@@ -6,9 +6,10 @@
 console.log('🚀 LinkedIn CRM Background Script loaded');
 
 // Auto-discovered queryIds from LinkedIn's own requests
+// Store MULTIPLE queryIds since LinkedIn uses different ones
 let discoveredQueryIds = {
-  conversations: null,
-  messages: null,
+  conversations: [],  // Array of queryIds
+  messages: [],       // Array of queryIds
   lastUpdated: null,
 };
 
@@ -17,7 +18,18 @@ let mailboxUrn = null;
 // Load persisted queryIds on startup
 chrome.storage.local.get(['discoveredQueryIds'], (result) => {
   if (result.discoveredQueryIds) {
-    discoveredQueryIds = { ...discoveredQueryIds, ...result.discoveredQueryIds };
+    // Migrate from old format (string) to new format (array)
+    if (typeof result.discoveredQueryIds.conversations === 'string') {
+      discoveredQueryIds.conversations = [result.discoveredQueryIds.conversations];
+    } else {
+      discoveredQueryIds.conversations = result.discoveredQueryIds.conversations || [];
+    }
+    if (typeof result.discoveredQueryIds.messages === 'string') {
+      discoveredQueryIds.messages = [result.discoveredQueryIds.messages];
+    } else {
+      discoveredQueryIds.messages = result.discoveredQueryIds.messages || [];
+    }
+    discoveredQueryIds.lastUpdated = result.discoveredQueryIds.lastUpdated;
     console.log('📦 Loaded persisted queryIds:', discoveredQueryIds);
   }
 });
@@ -35,13 +47,21 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       
       if (queryId) {
         if (queryId.startsWith('messengerConversations.')) {
-          discoveredQueryIds.conversations = queryId;
-          discoveredQueryIds.lastUpdated = Date.now();
-          console.log('🔍 Auto-discovered conversations queryId:', queryId);
+          // Store multiple queryIds (most recent first)
+          if (!discoveredQueryIds.conversations.includes(queryId)) {
+            discoveredQueryIds.conversations.unshift(queryId);
+            // Keep only last 5
+            discoveredQueryIds.conversations = discoveredQueryIds.conversations.slice(0, 5);
+            discoveredQueryIds.lastUpdated = Date.now();
+            console.log('🔍 Auto-discovered conversations queryId:', queryId);
+          }
         } else if (queryId.startsWith('messengerMessages.')) {
-          discoveredQueryIds.messages = queryId;
-          discoveredQueryIds.lastUpdated = Date.now();
-          console.log('🔍 Auto-discovered messages queryId:', queryId);
+          if (!discoveredQueryIds.messages.includes(queryId)) {
+            discoveredQueryIds.messages.unshift(queryId);
+            discoveredQueryIds.messages = discoveredQueryIds.messages.slice(0, 5);
+            discoveredQueryIds.lastUpdated = Date.now();
+            console.log('🔍 Auto-discovered messages queryId:', queryId);
+          }
         }
         
         // Persist
@@ -136,18 +156,42 @@ async function getMailboxUrn() {
 // =====================
 
 async function fetchConversations() {
-  if (!discoveredQueryIds.conversations) {
+  if (!discoveredQueryIds.conversations?.length) {
     throw new Error('QueryId not discovered. Navigate to LinkedIn Messaging first.');
   }
   
   const userUrn = await getMailboxUrn();
   if (!userUrn) throw new Error('Could not get mailbox URN');
   
-  const queryId = discoveredQueryIds.conversations;
-  const variables = `(mailboxUrn:${encodeURIComponent(userUrn)})`;
-  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
+  // Try each queryId until one works
+  let data = null;
+  let lastError = null;
   
-  const data = await makeLinkedInRequest(endpoint);
+  for (const queryId of discoveredQueryIds.conversations) {
+    try {
+      const variables = `(mailboxUrn:${encodeURIComponent(userUrn)})`;
+      const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
+      
+      data = await makeLinkedInRequest(endpoint);
+      
+      // Check if we got actual data
+      const convCount = data.included?.filter(i => i.$type === 'com.linkedin.messenger.Conversation')?.length || 0;
+      if (convCount > 0) {
+        console.log(`✅ QueryId ${queryId.substring(0, 30)}... returned ${convCount} conversations`);
+        break;
+      } else {
+        console.log(`⚠️ QueryId ${queryId.substring(0, 30)}... returned 0 conversations, trying next...`);
+        data = null;
+      }
+    } catch (e) {
+      console.warn(`❌ QueryId ${queryId.substring(0, 30)}... failed:`, e.message);
+      lastError = e;
+    }
+  }
+  
+  if (!data) {
+    throw lastError || new Error('All queryIds failed. Refresh LinkedIn Messaging.');
+  }
   
   // Parse conversations
   const conversations = data.included?.filter(item => 
@@ -203,28 +247,31 @@ async function fetchMessages(conversationUrn, count = 20) {
     fullConversationUrn = `urn:li:msg_conversation:(${userUrn},${convId})`;
   }
   
-  // Try GraphQL API first if queryId is available
-  if (discoveredQueryIds.messages) {
-    try {
-      const queryId = discoveredQueryIds.messages;
-      const encodedUrn = encodeURIComponent(fullConversationUrn).replace(/\(/g, '%28').replace(/\)/g, '%29');
-      const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodedUrn})`;
-      
-      const data = await makeLinkedInRequest(endpoint);
-      
-      const messages = (data.included || []).filter(item => 
-        item.$type === 'com.linkedin.messenger.Message'
-      ).map(msg => ({
-        entityUrn: msg.entityUrn,
-        body: msg.body?.text || '',
-        createdAt: msg.deliveredAt || msg.createdAt,
-        sender: msg['*sender']
-      }));
-      
-      console.log(`💬 Fetched ${messages.length} messages via GraphQL`);
-      return { messages };
-    } catch (e) {
-      console.warn('GraphQL messages failed, trying legacy API:', e.message);
+  // Try GraphQL API first with multiple queryIds
+  if (discoveredQueryIds.messages?.length) {
+    for (const queryId of discoveredQueryIds.messages) {
+      try {
+        const encodedUrn = encodeURIComponent(fullConversationUrn).replace(/\(/g, '%28').replace(/\)/g, '%29');
+        const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=(conversationUrn:${encodedUrn})`;
+        
+        const data = await makeLinkedInRequest(endpoint);
+        
+        const messages = (data.included || []).filter(item => 
+          item.$type === 'com.linkedin.messenger.Message'
+        ).map(msg => ({
+          entityUrn: msg.entityUrn,
+          body: msg.body?.text || '',
+          createdAt: msg.deliveredAt || msg.createdAt,
+          sender: msg['*sender']
+        }));
+        
+        if (messages.length > 0) {
+          console.log(`💬 Fetched ${messages.length} messages via GraphQL (queryId: ${queryId.substring(0, 25)}...)`);
+          return { messages };
+        }
+      } catch (e) {
+        console.warn(`GraphQL messages failed with ${queryId.substring(0, 25)}...:`, e.message);
+      }
     }
   }
   
@@ -279,8 +326,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_QUERY_IDS':
       sendResponse({
         queryIds: discoveredQueryIds,
-        hasConversations: !!discoveredQueryIds.conversations,
-        hasMessages: !!discoveredQueryIds.messages,
+        hasConversations: discoveredQueryIds.conversations?.length > 0,
+        hasMessages: discoveredQueryIds.messages?.length > 0,
+        conversationsCount: discoveredQueryIds.conversations?.length || 0,
+        messagesCount: discoveredQueryIds.messages?.length || 0,
       });
       break;
       

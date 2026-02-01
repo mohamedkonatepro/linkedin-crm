@@ -290,8 +290,8 @@ async function checkQueryIds() {
     } else {
       statusEl.style.display = 'block';
       statusEl.style.background = '#dcfce7';
-      textEl.textContent = '✅ QueryIds capturés - prêt à synchroniser';
-      setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+      textEl.textContent = `✅ QueryIds: ${response.conversationsCount} conv + ${response.messagesCount} msg`;
+      setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
     }
   } catch (e) {
     console.log('QueryIds check failed:', e);
