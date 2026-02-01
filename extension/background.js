@@ -412,7 +412,7 @@ async function sendMessage(conversationUrn, messageText) {
     headers: {
       'accept': 'application/json',
       'content-type': 'application/json',
-      'csrf-token': 'ajax:' + csrfToken,
+      'csrf-token': csrfToken, // JSESSIONID already contains "ajax:" prefix
       'x-restli-protocol-version': '2.0.0',
       'x-li-lang': 'fr_FR',
       'x-li-track': JSON.stringify({
