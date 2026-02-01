@@ -533,7 +533,15 @@ async function uploadFile(fileData, filename, mimeType) {
   }
   
   // Step 1: Init upload
-  console.log('📤 Initializing upload for:', filename);
+  console.log('📤 Initializing upload for:', filename, 'size:', fileData.byteLength, 'type:', mediaUploadType);
+  
+  const initBody = {
+    mediaUploadType,
+    fileSize: fileData.byteLength || fileData.size,
+    filename
+  };
+  console.log('📤 Init body:', JSON.stringify(initBody));
+  
   const initResp = await fetch('https://www.linkedin.com/voyager/api/voyagerVideoDashMediaUploadMetadata?action=upload', {
     method: 'POST',
     credentials: 'include',
@@ -543,36 +551,45 @@ async function uploadFile(fileData, filename, mimeType) {
       'csrf-token': csrfToken,
       'x-restli-protocol-version': '2.0.0',
     },
-    body: JSON.stringify({
-      mediaUploadType,
-      fileSize: fileData.byteLength || fileData.size,
-      filename
-    })
+    body: JSON.stringify(initBody)
   });
   
-  if (!initResp.ok) throw new Error('Upload init failed: ' + initResp.status);
+  if (!initResp.ok) {
+    const text = await initResp.text();
+    console.error('❌ Upload init failed:', initResp.status, text);
+    throw new Error('Upload init failed: ' + initResp.status + ' - ' + text.substring(0, 200));
+  }
   
   const initData = await initResp.json();
+  console.log('📤 Init response:', JSON.stringify(initData));
+  
   const uploadUrl = initData.value?.singleUploadUrl;
   const urn = initData.value?.urn;
   
-  if (!uploadUrl) throw new Error('No upload URL received');
+  if (!uploadUrl) {
+    console.error('❌ No upload URL in response:', initData);
+    throw new Error('No upload URL received');
+  }
   
   // Step 2: Upload the file
-  console.log('📤 Uploading file to:', uploadUrl.substring(0, 60) + '...');
+  console.log('📤 Uploading file to:', uploadUrl.substring(0, 80) + '...');
   const uploadResp = await fetch(uploadUrl, {
     method: 'PUT',
     credentials: 'include',
     headers: {
       'media-type-family': mediaTypeFamily,
-      'Csrf-Token': csrfToken,
+      'csrf-token': csrfToken,
     },
     body: fileData
   });
   
-  if (!uploadResp.ok) throw new Error('File upload failed: ' + uploadResp.status);
+  if (!uploadResp.ok) {
+    const text = await uploadResp.text();
+    console.error('❌ File upload failed:', uploadResp.status, text);
+    throw new Error('File upload failed: ' + uploadResp.status);
+  }
   
-  console.log('✅ File uploaded:', urn);
+  console.log('✅ File uploaded successfully! URN:', urn);
   return { urn, mediaTypeFamily };
 }
 
@@ -598,6 +615,11 @@ async function sendMessageWithAttachment(conversationUrn, messageText, attachmen
     renderContentUnions.push({ audio: { asset: attachmentUrn } });
   }
   
+  // Generate tracking ID like in sendMessage
+  const trackingBytes = new Uint8Array(16);
+  crypto.getRandomValues(trackingBytes);
+  const trackingId = String.fromCharCode.apply(null, trackingBytes);
+  
   const body = {
     message: {
       body: { attributes: [], text: messageText || '' },
@@ -606,27 +628,42 @@ async function sendMessageWithAttachment(conversationUrn, messageText, attachmen
       originToken: crypto.randomUUID()
     },
     mailboxUrn: userUrn,
-    trackingId: String.fromCharCode.apply(null, crypto.getRandomValues(new Uint8Array(16))),
+    trackingId: trackingId,
     dedupeByClientGeneratedToken: false
   };
   
-  console.log('📤 Sending message with attachment...');
+  console.log('📤 Sending message with attachment...', { conversationUrn, attachmentUrn, attachmentType });
+  console.log('📤 Body:', JSON.stringify(body, null, 2));
+  
   const response = await fetch('https://www.linkedin.com/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage', {
     method: 'POST',
     credentials: 'include',
     headers: {
       'accept': 'application/json',
       'content-type': 'application/json',
-      'Csrf-Token': csrfToken,
+      'csrf-token': csrfToken,  // lowercase like in sendMessage
       'x-restli-protocol-version': '2.0.0',
+      'x-li-lang': 'fr_FR',
+      'x-li-track': JSON.stringify({
+        clientVersion: '1.13.42216',
+        mpVersion: '1.13.42216',
+        osName: 'web',
+        timezoneOffset: 1,
+        deviceFormFactor: 'DESKTOP',
+        mpName: 'voyager-web'
+      }),
     },
     body: JSON.stringify(body),
   });
   
-  if (!response.ok) throw new Error('Send message failed: ' + response.status);
+  if (!response.ok) {
+    const text = await response.text();
+    console.error('❌ Send with attachment failed:', response.status, text);
+    throw new Error('Send message failed: ' + response.status + ' - ' + text.substring(0, 200));
+  }
   
   const data = await response.json();
-  console.log('✅ Message with attachment sent!');
+  console.log('✅ Message with attachment sent!', data.value?.entityUrn);
   return data;
 }
 
