@@ -402,15 +402,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
           
-          // Upload file
-          const { urn, mediaTypeFamily } = await uploadFile(bytes, message.filename, message.mimeType);
+          const fileSize = bytes.length;
+          const filename = message.filename;
+          const mimeType = message.mimeType;
           
-          // Send message with attachment
+          // Upload file
+          const { urn, mediaTypeFamily } = await uploadFile(bytes, filename, mimeType);
+          
+          // Send message with attachment (pass fileSize, mimeType, filename for correct format)
           const result = await sendMessageWithAttachment(
             message.conversationUrn,
             message.text || '',
             urn,
-            mediaTypeFamily
+            mediaTypeFamily,
+            fileSize,      // AJOUTÉ
+            mimeType,      // AJOUTÉ
+            filename       // AJOUTÉ
           );
           
           sendResponse({ ok: true, result });
@@ -632,7 +639,7 @@ async function uploadFile(fileData, filename, mimeType) {
 // SEND MESSAGE WITH ATTACHMENT
 // =====================
 
-async function sendMessageWithAttachment(conversationUrn, messageText, attachmentUrn, attachmentType) {
+async function sendMessageWithAttachment(conversationUrn, messageText, attachmentUrn, attachmentType, fileSize, mimeType, filename) {
   const cookies = await getLinkedInCookies();
   const csrfToken = cookies['JSESSIONID']?.replace(/"/g, '');
   const userUrn = await getMailboxUrn();
@@ -648,7 +655,15 @@ async function sendMessageWithAttachment(conversationUrn, messageText, attachmen
   if (attachmentType === 'STILLIMAGE') {
     renderContentUnions.push({ vectorImage: { digitalmediaAsset: attachmentUrn } });
   } else if (attachmentType === 'DOCUMENT') {
-    renderContentUnions.push({ file: { asset: attachmentUrn } });
+    // IMPORTANT: Use assetUrn (not asset) + include byteSize, mediaType, name
+    renderContentUnions.push({ 
+      file: { 
+        assetUrn: attachmentUrn,
+        byteSize: fileSize || 0,
+        mediaType: mimeType || 'application/octet-stream',
+        name: filename || 'file'
+      } 
+    });
   } else if (attachmentType === 'AUDIO') {
     renderContentUnions.push({ audio: { asset: attachmentUrn } });
   }
