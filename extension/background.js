@@ -280,19 +280,20 @@ async function fetchMessages(conversationUrn, count = 20) {
                 asset: content.vectorImage.digitalmediaAsset
               });
             }
-            if (content.file) {
+            if (content.file?.url) {
               attachments.push({
                 type: 'file',
                 name: content.file.name || 'file',
                 url: content.file.url,
-                size: content.file.byteSize
+                size: content.file.byteSize,
+                mediaType: content.file.mediaType
               });
             }
-            if (content.audio) {
+            if (content.audio?.url) {
               attachments.push({
                 type: 'audio',
                 url: content.audio.url,
-                duration: content.audio.duration
+                duration: content.audio.duration // in milliseconds
               });
             }
             if (content.video?.progressiveStreams?.[0]) {
