@@ -69,6 +69,7 @@ export default function CRMPage() {
         const allMsgs: any[] = []
         for (const conv of (json.data.conversations || [])) {
           const convId = conv.threadId || conv.id
+          console.log('Conv:', convId, 'has', conv.messages?.length || 0, 'messages')
           for (const msg of (conv.messages || [])) {
             allMsgs.push({
               id: msg.urn || `msg-${allMsgs.length}`,
@@ -80,6 +81,10 @@ export default function CRMPage() {
             })
           }
         }
+        
+        console.log('Total messages:', allMsgs.length, 'Conversations:', convs.length)
+        console.log('Sample msg conversationId:', allMsgs[0]?.conversationId)
+        console.log('Sample conv id:', convs[0]?.id)
         
         setConversations(convs)
         setMessages(allMsgs)
