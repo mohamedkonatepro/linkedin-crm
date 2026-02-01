@@ -309,9 +309,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   switch (message.type) {
     case 'FETCH_ALL_CONVERSATIONS':
-      fetchConversations()
-        .then(data => sendResponse({ ok: true, data }))
-        .catch(err => sendResponse({ ok: false, error: err.message }));
+      (async () => {
+        try {
+          const userUrn = await getMailboxUrn();
+          const data = await fetchConversations();
+          sendResponse({ ok: true, data, userUrn });
+        } catch (err) {
+          sendResponse({ ok: false, error: err.message });
+        }
+      })();
       return true;
       
     case 'FETCH_MESSAGES':

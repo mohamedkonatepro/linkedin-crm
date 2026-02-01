@@ -74,7 +74,8 @@ async function performFullSync() {
     }
     
     const apiConversations = convResponse.data.slice(0, config.convLimit);
-    console.log(`📬 Got ${apiConversations.length} conversations from API`);
+    const myUrn = convResponse.userUrn; // Get the connected user's URN
+    console.log(`📬 Got ${apiConversations.length} conversations from API (myUrn: ${myUrn?.substring(0, 30)}...)`);
     
     // Step 2: Transform conversations
     const conversations = apiConversations.map((conv, i) => {
@@ -111,15 +112,21 @@ async function performFullSync() {
         });
         
         if (msgResponse.ok && msgResponse.data?.messages) {
-          conv.messages = msgResponse.data.messages.map((msg, j) => ({
-            urn: msg.entityUrn || `msg-${i}-${j}`,
-            content: msg.body || '',
-            isFromMe: msg.sender?.includes('ACoAAD_LQawB') || false, // Max Leroux's profile ID
-            timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : null,
-            senderName: null
-          }));
+          conv.messages = msgResponse.data.messages.map((msg, j) => {
+            // Detect if message is from me by checking if sender contains my profile ID
+            const myProfileId = myUrn?.split(':').pop()?.split(',')[0]; // Extract profile ID from URN
+            const isFromMe = myProfileId && msg.sender ? msg.sender.includes(myProfileId) : false;
+            
+            return {
+              urn: msg.entityUrn || `msg-${i}-${j}`,
+              content: msg.body || '',
+              isFromMe,
+              timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : null,
+              senderName: null
+            };
+          });
           totalMessages += conv.messages.length;
-          console.log(`   ✅ ${conv.messages.length} messages`);
+          console.log(`   ✅ ${conv.messages.length} messages (myProfileId: ${myUrn?.split(':').pop()?.split(',')[0]?.substring(0, 15)}...)`);
         }
       } catch (e) {
         console.error(`   ❌ Error fetching messages for ${conv.name}:`, e);

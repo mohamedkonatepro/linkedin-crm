@@ -103,8 +103,14 @@ export default function CRMPage() {
   // Selected conversation
   const selectedConv = conversations.find(c => c.id === selectedConvId)
   
-  // Filter messages for selected conversation
-  const selectedMessages = messages.filter(m => m.conversationId === selectedConvId)
+  // Filter messages for selected conversation and sort by timestamp
+  const selectedMessages = messages
+    .filter(m => m.conversationId === selectedConvId)
+    .sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
+      return timeA - timeB // Oldest first
+    })
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-white">
