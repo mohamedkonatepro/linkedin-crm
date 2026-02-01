@@ -394,6 +394,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch(err => sendResponse({ ok: false, error: err.message }));
       return true;
       
+    case 'SEND_MESSAGE_WITH_FILE':
+      (async () => {
+        try {
+          // message.fileData is base64, convert to ArrayBuffer
+          const binary = atob(message.fileData);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          
+          // Upload file
+          const { urn, mediaTypeFamily } = await uploadFile(bytes, message.filename, message.mimeType);
+          
+          // Send message with attachment
+          const result = await sendMessageWithAttachment(
+            message.conversationUrn,
+            message.text || '',
+            urn,
+            mediaTypeFamily
+          );
+          
+          sendResponse({ ok: true, result });
+        } catch (err) {
+          sendResponse({ ok: false, error: err.message });
+        }
+      })();
+      return true;
+      
     default:
       sendResponse({ error: 'Unknown message type' });
   }
@@ -481,6 +507,126 @@ async function sendMessage(conversationUrn, messageText) {
   
   const data = await response.json();
   console.log('✅ Message sent successfully!', data.value?.entityUrn);
+  return data;
+}
+
+// =====================
+// UPLOAD FILE to LinkedIn
+// =====================
+
+async function uploadFile(fileData, filename, mimeType) {
+  const cookies = await getLinkedInCookies();
+  const csrfToken = cookies['JSESSIONID']?.replace(/"/g, '');
+  
+  if (!csrfToken) throw new Error('No CSRF token');
+  
+  // Determine media type
+  let mediaUploadType = 'MESSAGING_FILE_ATTACHMENT';
+  let mediaTypeFamily = 'DOCUMENT';
+  
+  if (mimeType.startsWith('image/')) {
+    mediaUploadType = 'MESSAGING_PHOTO_ATTACHMENT';
+    mediaTypeFamily = 'STILLIMAGE';
+  } else if (mimeType.startsWith('audio/')) {
+    mediaUploadType = 'MESSAGING_VOICE_ATTACHMENT';
+    mediaTypeFamily = 'AUDIO';
+  }
+  
+  // Step 1: Init upload
+  console.log('📤 Initializing upload for:', filename);
+  const initResp = await fetch('https://www.linkedin.com/voyager/api/voyagerVideoDashMediaUploadMetadata?action=upload', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'accept': 'application/json',
+      'content-type': 'application/json',
+      'csrf-token': csrfToken,
+      'x-restli-protocol-version': '2.0.0',
+    },
+    body: JSON.stringify({
+      mediaUploadType,
+      fileSize: fileData.byteLength || fileData.size,
+      filename
+    })
+  });
+  
+  if (!initResp.ok) throw new Error('Upload init failed: ' + initResp.status);
+  
+  const initData = await initResp.json();
+  const uploadUrl = initData.value?.singleUploadUrl;
+  const urn = initData.value?.urn;
+  
+  if (!uploadUrl) throw new Error('No upload URL received');
+  
+  // Step 2: Upload the file
+  console.log('📤 Uploading file to:', uploadUrl.substring(0, 60) + '...');
+  const uploadResp = await fetch(uploadUrl, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'media-type-family': mediaTypeFamily,
+      'Csrf-Token': csrfToken,
+    },
+    body: fileData
+  });
+  
+  if (!uploadResp.ok) throw new Error('File upload failed: ' + uploadResp.status);
+  
+  console.log('✅ File uploaded:', urn);
+  return { urn, mediaTypeFamily };
+}
+
+// =====================
+// SEND MESSAGE WITH ATTACHMENT
+// =====================
+
+async function sendMessageWithAttachment(conversationUrn, messageText, attachmentUrn, attachmentType) {
+  const cookies = await getLinkedInCookies();
+  const csrfToken = cookies['JSESSIONID']?.replace(/"/g, '');
+  const userUrn = await getMailboxUrn();
+  
+  if (!csrfToken) throw new Error('No CSRF token');
+  if (!userUrn) throw new Error('Could not get mailbox URN');
+  
+  // Build renderContentUnions based on attachment type
+  const renderContentUnions = [];
+  if (attachmentType === 'STILLIMAGE') {
+    renderContentUnions.push({ vectorImage: { digitalmediaAsset: attachmentUrn } });
+  } else if (attachmentType === 'DOCUMENT') {
+    renderContentUnions.push({ file: { asset: attachmentUrn } });
+  } else if (attachmentType === 'AUDIO') {
+    renderContentUnions.push({ audio: { asset: attachmentUrn } });
+  }
+  
+  const body = {
+    message: {
+      body: { attributes: [], text: messageText || '' },
+      renderContentUnions,
+      conversationUrn,
+      originToken: crypto.randomUUID()
+    },
+    mailboxUrn: userUrn,
+    trackingId: String.fromCharCode.apply(null, crypto.getRandomValues(new Uint8Array(16))),
+    dedupeByClientGeneratedToken: false
+  };
+  
+  console.log('📤 Sending message with attachment...');
+  const response = await fetch('https://www.linkedin.com/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'accept': 'application/json',
+      'content-type': 'application/json',
+      'Csrf-Token': csrfToken,
+      'x-restli-protocol-version': '2.0.0',
+    },
+    body: JSON.stringify(body),
+  });
+  
+  if (!response.ok) throw new Error('Send message failed: ' + response.status);
+  
+  const data = await response.json();
+  console.log('✅ Message with attachment sent!');
   return data;
 }
 
