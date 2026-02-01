@@ -342,6 +342,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       break;
       
+    case 'SEND_MESSAGE':
+      sendMessage(message.conversationUrn, message.text)
+        .then(result => sendResponse({ ok: true, result }))
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true;
+      
     default:
       sendResponse({ error: 'Unknown message type' });
   }
@@ -359,6 +365,77 @@ async function syncToServer(apiUrl, data) {
   }
   
   return response.json();
+}
+
+// =====================
+// SEND MESSAGE via LinkedIn Dash API
+// =====================
+
+async function sendMessage(conversationUrn, messageText) {
+  const cookies = await getLinkedInCookies();
+  const csrfToken = cookies['JSESSIONID']?.replace(/"/g, '');
+  
+  if (!csrfToken) {
+    throw new Error('No CSRF token. Visit LinkedIn first.');
+  }
+  
+  const userUrn = await getMailboxUrn();
+  if (!userUrn) throw new Error('Could not get mailbox URN');
+  
+  // Generate unique tokens
+  const originToken = crypto.randomUUID();
+  const trackingBytes = new Uint8Array(16);
+  crypto.getRandomValues(trackingBytes);
+  const trackingId = String.fromCharCode.apply(null, trackingBytes);
+  
+  const body = {
+    message: {
+      body: {
+        attributes: [],
+        text: messageText
+      },
+      renderContentUnions: [],
+      conversationUrn: conversationUrn,
+      originToken: originToken
+    },
+    mailboxUrn: userUrn,
+    trackingId: trackingId,
+    dedupeByClientGeneratedToken: false
+  };
+  
+  const url = 'https://www.linkedin.com/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage';
+  
+  console.log('📤 Sending message via Dash API to:', conversationUrn);
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'content-type': 'application/json',
+      'csrf-token': 'ajax:' + csrfToken,
+      'x-restli-protocol-version': '2.0.0',
+      'x-li-lang': 'fr_FR',
+      'x-li-track': JSON.stringify({
+        clientVersion: '1.13.42216',
+        mpVersion: '1.13.42216',
+        osName: 'web',
+        timezoneOffset: 1,
+        deviceFormFactor: 'DESKTOP',
+        mpName: 'voyager-web'
+      }),
+    },
+    body: JSON.stringify(body),
+  });
+  
+  if (!response.ok) {
+    const text = await response.text();
+    console.error('Send failed:', response.status, text);
+    throw new Error(`Failed to send message: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  console.log('✅ Message sent successfully!', data.value?.entityUrn);
+  return data;
 }
 
 // Initial setup

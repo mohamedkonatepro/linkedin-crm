@@ -13,6 +13,39 @@ let config = {
 };
 
 // =====================
+// WINDOW MESSAGE HANDLER (CRM -> Extension)
+// =====================
+
+window.addEventListener('message', async (event) => {
+  if (!event.data || event.data.source !== 'linkedin-crm') return;
+  
+  console.log('📨 Window message from CRM:', event.data.type);
+  
+  if (event.data.type === 'SEND_MESSAGE') {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'SEND_MESSAGE',
+        conversationUrn: event.data.conversationUrn,
+        text: event.data.text
+      });
+      
+      window.parent.postMessage({
+        source: 'linkedin-extension',
+        type: 'SEND_MESSAGE_RESPONSE',
+        ...response
+      }, '*');
+    } catch (e) {
+      window.parent.postMessage({
+        source: 'linkedin-extension',
+        type: 'SEND_MESSAGE_RESPONSE',
+        ok: false,
+        error: e.message
+      }, '*');
+    }
+  }
+});
+
+// =====================
 // MESSAGE HANDLERS
 // =====================
 

@@ -43,6 +43,8 @@ export default function CRMPage() {
   const [showLinkedIn, setShowLinkedIn] = useState(false)
   const [iframeLoaded, setIframeLoaded] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [newMessage, setNewMessage] = useState('')
+  const [isSending, setIsSending] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   // Fetch data from API
@@ -93,6 +95,52 @@ export default function CRMPage() {
     setIsLoading(true)
     await fetchData()
     setIsLoading(false)
+  }
+
+  // Send message via iframe to extension
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedConvId || !iframeRef.current?.contentWindow) {
+      if (!iframeRef.current?.contentWindow) {
+        alert('LinkedIn non connecté. Active l\'iframe avec le bouton 👁️')
+      }
+      return
+    }
+    
+    setIsSending(true)
+    
+    // Send to iframe (extension will handle it)
+    iframeRef.current.contentWindow.postMessage({
+      source: 'linkedin-crm',
+      type: 'SEND_MESSAGE',
+      conversationUrn: selectedConvId,
+      text: newMessage.trim()
+    }, '*')
+    
+    // Listen for response
+    const handleResponse = (event: MessageEvent) => {
+      if (event.data?.source === 'linkedin-extension' && event.data?.type === 'SEND_MESSAGE_RESPONSE') {
+        window.removeEventListener('message', handleResponse)
+        setIsSending(false)
+        
+        if (event.data.ok) {
+          setNewMessage('')
+          setTimeout(fetchData, 1000) // Refresh messages
+        } else {
+          alert('Erreur: ' + (event.data.error || 'Échec de l\'envoi'))
+        }
+      }
+    }
+    
+    window.addEventListener('message', handleResponse)
+    
+    // Timeout
+    setTimeout(() => {
+      window.removeEventListener('message', handleResponse)
+      if (isSending) {
+        setIsSending(false)
+        alert('Timeout - Vérifie que l\'extension est active')
+      }
+    }, 10000)
   }
 
   // Filter conversations
@@ -297,10 +345,27 @@ export default function CRMPage() {
                     <input
                       type="text"
                       placeholder="Écrire un message..."
-                      className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          handleSendMessage()
+                        }
+                      }}
+                      disabled={isSending}
+                      className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500 disabled:opacity-50"
                     />
-                    <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
-                      <Send className="w-5 h-5" />
+                    <button 
+                      onClick={handleSendMessage}
+                      disabled={isSending || !newMessage.trim()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isSending ? (
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Send className="w-5 h-5" />
+                      )}
                     </button>
                   </div>
                 </div>
