@@ -1,6 +1,7 @@
 /**
  * LinkedIn CRM Sync - Background Service Worker
  * Handles LinkedIn API calls and server communication
+ * Includes intelligent polling for real-time backup
  */
 
 console.log('🚀 LinkedIn CRM Background Script loaded');
@@ -15,8 +16,24 @@ let discoveredQueryIds = {
 
 let mailboxUrn = null;
 
-// Load persisted queryIds on startup
-chrome.storage.local.get(['discoveredQueryIds'], (result) => {
+// =====================
+// REALTIME POLLING CONFIG
+// =====================
+
+const POLLING_CONFIG = {
+  enabled: true,
+  intervalMs: 30000,  // 30 seconds
+  crmServerUrl: 'http://localhost:3000',
+  lastPollTime: null,
+  lastMessageTimestamp: null,
+  isWebSocketActive: false,  // If WebSocket is active, reduce polling frequency
+};
+
+// Track seen messages to avoid duplicates
+const seenMessageUrns = new Set();
+
+// Load persisted state on startup
+chrome.storage.local.get(['discoveredQueryIds', 'pollingConfig', 'seenMessageUrns'], (result) => {
   if (result.discoveredQueryIds) {
     // Migrate from old format (string) to new format (array)
     if (typeof result.discoveredQueryIds.conversations === 'string') {
@@ -32,7 +49,149 @@ chrome.storage.local.get(['discoveredQueryIds'], (result) => {
     discoveredQueryIds.lastUpdated = result.discoveredQueryIds.lastUpdated;
     console.log('📦 Loaded persisted queryIds:', discoveredQueryIds);
   }
+  
+  if (result.pollingConfig) {
+    Object.assign(POLLING_CONFIG, result.pollingConfig);
+    console.log('📦 Loaded polling config:', POLLING_CONFIG);
+  }
+  
+  if (result.seenMessageUrns && Array.isArray(result.seenMessageUrns)) {
+    result.seenMessageUrns.forEach(urn => seenMessageUrns.add(urn));
+    console.log('📦 Loaded', seenMessageUrns.size, 'seen message URNs');
+  }
 });
+
+// =====================
+// INTELLIGENT POLLING
+// =====================
+
+let pollingInterval = null;
+
+function startPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+  }
+  
+  console.log('🔄 Starting intelligent polling every', POLLING_CONFIG.intervalMs / 1000, 'seconds');
+  
+  pollingInterval = setInterval(async () => {
+    // If WebSocket is active, poll less frequently (every 2 minutes instead of 30s)
+    if (POLLING_CONFIG.isWebSocketActive) {
+      const timeSinceLastPoll = Date.now() - (POLLING_CONFIG.lastPollTime || 0);
+      if (timeSinceLastPoll < 120000) { // 2 minutes
+        console.log('⏳ WebSocket active, skipping poll');
+        return;
+      }
+    }
+    
+    await pollForNewMessages();
+  }, POLLING_CONFIG.intervalMs);
+  
+  // Also poll immediately on start
+  setTimeout(pollForNewMessages, 5000);
+}
+
+async function pollForNewMessages() {
+  if (!discoveredQueryIds.conversations?.length) {
+    console.log('⏳ Polling: No queryIds yet, waiting...');
+    return;
+  }
+  
+  try {
+    console.log('🔄 Polling for new messages...');
+    POLLING_CONFIG.lastPollTime = Date.now();
+    
+    // Fetch recent conversations to check for new activity
+    const conversations = await fetchConversations();
+    
+    // Only fetch messages for conversations with recent activity
+    const recentConvs = conversations.slice(0, 10); // Top 10 most recent
+    const newMessages = [];
+    
+    for (const conv of recentConvs) {
+      // Check if this conversation has newer activity than our last poll
+      if (POLLING_CONFIG.lastMessageTimestamp && 
+          conv.lastActivityAt <= POLLING_CONFIG.lastMessageTimestamp) {
+        continue;
+      }
+      
+      try {
+        const result = await fetchMessages(conv.entityUrn || conv._fullUrn, 5);
+        
+        for (const msg of result.messages || []) {
+          if (!seenMessageUrns.has(msg.entityUrn)) {
+            seenMessageUrns.add(msg.entityUrn);
+            newMessages.push({
+              ...msg,
+              conversationUrn: conv.entityUrn || conv._fullUrn,
+              participantName: conv._participantName
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Error fetching messages for', conv._participantName, ':', e.message);
+      }
+      
+      // Small delay between conversations
+      await new Promise(r => setTimeout(r, 300));
+    }
+    
+    // Update last message timestamp
+    if (conversations.length > 0) {
+      POLLING_CONFIG.lastMessageTimestamp = Math.max(
+        ...conversations.map(c => c.lastActivityAt || 0)
+      );
+    }
+    
+    // If new messages found, notify CRM
+    if (newMessages.length > 0) {
+      console.log(`⚡ Polling: Found ${newMessages.length} new message(s)`);
+      
+      // Send to CRM server
+      await notifyCRMServer(newMessages);
+      
+      // Persist seen URNs (keep last 1000)
+      const urnsToSave = Array.from(seenMessageUrns).slice(-1000);
+      chrome.storage.local.set({ seenMessageUrns: urnsToSave });
+    } else {
+      console.log('✓ Polling: No new messages');
+    }
+    
+  } catch (e) {
+    console.error('❌ Polling error:', e.message);
+  }
+}
+
+async function notifyCRMServer(messages) {
+  try {
+    const response = await fetch(`${POLLING_CONFIG.crmServerUrl}/api/realtime`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'new_messages',
+        messages: messages.map(msg => ({
+          urn: msg.entityUrn,
+          conversationId: msg.conversationUrn,
+          content: msg.body || '',
+          timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : new Date().toISOString(),
+          sender: msg.sender,
+          participantName: msg.participantName,
+          attachments: msg.attachments || null
+        })),
+        timestamp: new Date().toISOString()
+      })
+    });
+    
+    if (response.ok) {
+      console.log('✅ Notified CRM server of new messages');
+    }
+  } catch (e) {
+    console.warn('Could not notify CRM server:', e.message);
+  }
+}
+
+// Start polling when extension loads
+startPolling();
 
 // =====================
 // NETWORK INTERCEPTION - Capture queryIds
@@ -354,6 +513,65 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('📨 Background received:', message.type);
   
   switch (message.type) {
+    case 'REALTIME_MESSAGES':
+      // Messages from WebSocket interception in content script
+      (async () => {
+        const newMessages = [];
+        for (const msg of message.messages || []) {
+          if (!seenMessageUrns.has(msg.entityUrn)) {
+            seenMessageUrns.add(msg.entityUrn);
+            newMessages.push(msg);
+          }
+        }
+        if (newMessages.length > 0) {
+          console.log(`⚡ WebSocket: ${newMessages.length} new message(s) from content script`);
+          await notifyCRMServer(newMessages);
+        }
+        sendResponse({ ok: true, count: newMessages.length });
+      })();
+      return true;
+      
+    case 'REALTIME_STATUS':
+      // WebSocket connection status from content script
+      POLLING_CONFIG.isWebSocketActive = message.connected;
+      console.log('📡 WebSocket status:', message.connected ? 'CONNECTED' : 'DISCONNECTED');
+      
+      // If WebSocket disconnected, poll immediately
+      if (!message.connected) {
+        setTimeout(pollForNewMessages, 2000);
+      }
+      sendResponse({ ok: true });
+      break;
+      
+    case 'SET_POLLING_CONFIG':
+      Object.assign(POLLING_CONFIG, message.config);
+      chrome.storage.local.set({ pollingConfig: POLLING_CONFIG });
+      if (message.config.enabled !== undefined) {
+        if (message.config.enabled) {
+          startPolling();
+        } else if (pollingInterval) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+        }
+      }
+      sendResponse({ ok: true, config: POLLING_CONFIG });
+      break;
+      
+    case 'GET_POLLING_STATUS':
+      sendResponse({
+        ok: true,
+        config: POLLING_CONFIG,
+        isPolling: !!pollingInterval,
+        seenCount: seenMessageUrns.size
+      });
+      break;
+      
+    case 'FORCE_POLL':
+      pollForNewMessages()
+        .then(() => sendResponse({ ok: true }))
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true;
+      
     case 'FETCH_ALL_CONVERSATIONS':
       (async () => {
         try {

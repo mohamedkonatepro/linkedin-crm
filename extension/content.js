@@ -1,6 +1,7 @@
 /**
  * LinkedIn CRM Sync - Content Script
  * Uses LinkedIn API (not DOM scraping) for reliable data extraction
+ * Includes WebSocket interception for real-time message detection
  */
 
 console.log('🔌 LinkedIn CRM Content Script loaded on:', window.location.href);
@@ -11,6 +12,241 @@ let config = {
   convLimit: 50,
   msgLimit: 20,
 };
+
+// Track seen message URNs to avoid duplicates
+const seenMessageUrns = new Set();
+
+// =====================
+// WEBSOCKET INTERCEPTION FOR REALTIME
+// =====================
+
+function setupWebSocketInterception() {
+  console.log('🔗 Setting up WebSocket interception for realtime...');
+  
+  const OriginalWebSocket = window.WebSocket;
+  
+  window.WebSocket = function(url, protocols) {
+    console.log('🌐 WebSocket connecting to:', url);
+    
+    const ws = protocols 
+      ? new OriginalWebSocket(url, protocols) 
+      : new OriginalWebSocket(url);
+    
+    // Intercept LinkedIn realtime WebSocket
+    if (url.includes('linkedin.com') || url.includes('realtime')) {
+      console.log('✅ Intercepting LinkedIn WebSocket:', url);
+      
+      ws.addEventListener('message', (event) => {
+        try {
+          processWebSocketMessage(event.data);
+        } catch (e) {
+          // Silently ignore parsing errors
+        }
+      });
+      
+      ws.addEventListener('open', () => {
+        console.log('🟢 LinkedIn WebSocket opened');
+        notifyRealtimeStatus(true);
+      });
+      
+      ws.addEventListener('close', () => {
+        console.log('🔴 LinkedIn WebSocket closed');
+        notifyRealtimeStatus(false);
+      });
+    }
+    
+    return ws;
+  };
+  
+  // Preserve WebSocket prototype and static properties
+  window.WebSocket.prototype = OriginalWebSocket.prototype;
+  window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+  window.WebSocket.OPEN = OriginalWebSocket.OPEN;
+  window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+  window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+  
+  console.log('✅ WebSocket interception ready');
+}
+
+function processWebSocketMessage(data) {
+  // LinkedIn WebSocket can send binary or text data
+  let parsed = null;
+  
+  if (typeof data === 'string') {
+    try {
+      parsed = JSON.parse(data);
+    } catch (e) {
+      // Not JSON, might be a ping/pong or binary frame
+      return;
+    }
+  } else if (data instanceof Blob) {
+    // Handle blob data asynchronously
+    data.text().then(text => {
+      try {
+        const blobParsed = JSON.parse(text);
+        handleLinkedInRealtimeData(blobParsed);
+      } catch (e) {}
+    });
+    return;
+  } else if (data instanceof ArrayBuffer) {
+    // Try to decode as UTF-8
+    try {
+      const decoder = new TextDecoder('utf-8');
+      const text = decoder.decode(data);
+      parsed = JSON.parse(text);
+    } catch (e) {
+      return;
+    }
+  }
+  
+  if (parsed) {
+    handleLinkedInRealtimeData(parsed);
+  }
+}
+
+function handleLinkedInRealtimeData(data) {
+  if (!data) return;
+  
+  const messages = [];
+  
+  // LinkedIn realtime format 1: com.linkedin.messenger.Message in included
+  if (data.included && Array.isArray(data.included)) {
+    for (const item of data.included) {
+      if (item.$type === 'com.linkedin.messenger.Message') {
+        if (item.entityUrn && !seenMessageUrns.has(item.entityUrn)) {
+          seenMessageUrns.add(item.entityUrn);
+          messages.push(extractMessageData(item));
+        }
+      }
+    }
+  }
+  
+  // LinkedIn realtime format 2: direct message object
+  if (data.$type === 'com.linkedin.messenger.Message') {
+    if (data.entityUrn && !seenMessageUrns.has(data.entityUrn)) {
+      seenMessageUrns.add(data.entityUrn);
+      messages.push(extractMessageData(data));
+    }
+  }
+  
+  // LinkedIn realtime format 3: event-based (MESSAGING_EVENT)
+  if (data.eventType === 'MESSAGING_EVENT' || data.type === 'MESSAGING_EVENT') {
+    const msgData = data.message || data.data?.message;
+    if (msgData?.entityUrn && !seenMessageUrns.has(msgData.entityUrn)) {
+      seenMessageUrns.add(msgData.entityUrn);
+      messages.push(extractMessageData(msgData));
+    }
+  }
+  
+  // LinkedIn realtime format 4: payload wrapper
+  if (data.payload?.message) {
+    const msgData = data.payload.message;
+    if (msgData.entityUrn && !seenMessageUrns.has(msgData.entityUrn)) {
+      seenMessageUrns.add(msgData.entityUrn);
+      messages.push(extractMessageData(msgData));
+    }
+  }
+  
+  // LinkedIn realtime format 5: array of events
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      handleLinkedInRealtimeData(item);
+    }
+    return;
+  }
+  
+  // If we found new messages, notify
+  if (messages.length > 0) {
+    console.log(`⚡ WebSocket: ${messages.length} new message(s)`, messages.map(m => m.body?.slice(0, 30)));
+    notifyNewMessages(messages);
+  }
+}
+
+function extractMessageData(item) {
+  return {
+    entityUrn: item.entityUrn,
+    body: item.body?.text || item.body || '',
+    createdAt: item.deliveredAt || item.createdAt,
+    sender: item['*sender'] || item.sender?.entityUrn || item.senderUrn,
+    conversationUrn: item['*conversation'] || item.conversationUrn || extractConversationUrn(item.entityUrn),
+    attachments: extractAttachments(item.renderContent || item.attachments)
+  };
+}
+
+function extractConversationUrn(messageUrn) {
+  if (!messageUrn) return null;
+  // Format: urn:li:msg_message:(profileUrn,threadId-messageId)
+  const match = messageUrn.match(/urn:li:msg_message:\(([^,]+),([^-]+)/);
+  if (match) {
+    return `urn:li:msg_conversation:(${match[1]},${match[2]})`;
+  }
+  return null;
+}
+
+function extractAttachments(renderContent) {
+  if (!renderContent || !Array.isArray(renderContent)) return null;
+  
+  const attachments = [];
+  for (const content of renderContent) {
+    if (content.vectorImage?.rootUrl) {
+      attachments.push({
+        type: 'image',
+        url: content.vectorImage.rootUrl,
+        asset: content.vectorImage.digitalmediaAsset
+      });
+    }
+    if (content.file?.url) {
+      attachments.push({
+        type: 'file',
+        name: content.file.name || 'file',
+        url: content.file.url,
+        size: content.file.byteSize
+      });
+    }
+    if (content.audio?.url) {
+      attachments.push({
+        type: 'audio',
+        url: content.audio.url,
+        duration: content.audio.duration
+      });
+    }
+  }
+  
+  return attachments.length > 0 ? attachments : null;
+}
+
+function notifyNewMessages(messages) {
+  // Send to parent window (CRM iframe container)
+  window.parent.postMessage({
+    source: 'linkedin-extension',
+    type: 'NEW_MESSAGES',
+    messages: messages,
+    timestamp: Date.now()
+  }, '*');
+  
+  // Also notify background script for server sync
+  chrome.runtime.sendMessage({
+    type: 'REALTIME_MESSAGES',
+    messages: messages
+  }).catch(() => {});
+}
+
+function notifyRealtimeStatus(connected) {
+  window.parent.postMessage({
+    source: 'linkedin-extension',
+    type: 'REALTIME_STATUS',
+    connected: connected,
+    timestamp: Date.now()
+  }, '*');
+  
+  chrome.runtime.sendMessage({
+    type: 'REALTIME_STATUS',
+    connected: connected
+  }).catch(() => {});
+}
+
+// Initialize WebSocket interception IMMEDIATELY (before LinkedIn loads)
+setupWebSocketInterception();
 
 // =====================
 // WINDOW MESSAGE HANDLER (CRM -> Extension)

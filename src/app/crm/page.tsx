@@ -58,8 +58,11 @@ export default function CRMPage() {
   const [isSending, setIsSending] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
+  const [realtimeStatus, setRealtimeStatus] = useState<'disconnected' | 'websocket' | 'polling'>('disconnected')
+  const [lastRealtimeMessage, setLastRealtimeMessage] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const lastRealtimeCheckRef = useRef<string | null>(null)
 
   // Fetch data from API
   const fetchData = useCallback(async () => {
@@ -98,12 +101,150 @@ export default function CRMPage() {
     }
   }, [])
 
-  // Poll for updates
+  // Poll for updates (main sync)
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 5000)
+    const interval = setInterval(fetchData, 10000) // Slower polling since we have realtime
     return () => clearInterval(interval)
   }, [fetchData])
+
+  // =====================
+  // REALTIME: Listen for WebSocket messages from iframe
+  // =====================
+  useEffect(() => {
+    const handleRealtimeMessage = (event: MessageEvent) => {
+      if (event.data?.source !== 'linkedin-extension') return
+      
+      // Handle new messages from WebSocket interception
+      if (event.data.type === 'NEW_MESSAGES' && event.data.messages) {
+        console.log('⚡ Realtime (WebSocket): received', event.data.messages.length, 'new messages')
+        setRealtimeStatus('websocket')
+        setLastRealtimeMessage(new Date().toLocaleTimeString('fr-FR'))
+        
+        // Add new messages to state
+        const newMsgs: Message[] = event.data.messages.map((m: any, i: number) => ({
+          id: m.entityUrn || `rt-${Date.now()}-${i}`,
+          conversationId: m.conversationUrn || null,
+          content: m.body || '',
+          isFromMe: false, // Messages from WebSocket are usually from others
+          timestamp: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
+          attachments: m.attachments || null
+        }))
+        
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id))
+          const unique = newMsgs.filter(m => !existingIds.has(m.id))
+          if (unique.length > 0) {
+            console.log('⚡ Adding', unique.length, 'new messages to state')
+            return [...prev, ...unique]
+          }
+          return prev
+        })
+        
+        // Update conversation preview
+        if (event.data.messages.length > 0) {
+          const lastMsg = event.data.messages[event.data.messages.length - 1]
+          setConversations(prev => prev.map(conv => {
+            const convId = conv.id
+            const msgConvUrn = lastMsg.conversationUrn || ''
+            if (msgConvUrn.includes(convId) || convId.includes(msgConvUrn.split(':').pop() || '')) {
+              return {
+                ...conv,
+                lastMessagePreview: lastMsg.body || '[Attachment]',
+                lastMessageTime: new Date().toISOString(),
+                unreadCount: conv.unreadCount + 1
+              }
+            }
+            return conv
+          }))
+        }
+      }
+      
+      // Handle realtime status changes
+      if (event.data.type === 'REALTIME_STATUS') {
+        setRealtimeStatus(event.data.connected ? 'websocket' : 'polling')
+        console.log('📡 Realtime status:', event.data.connected ? 'WebSocket CONNECTED' : 'WebSocket DISCONNECTED')
+      }
+    }
+    
+    window.addEventListener('message', handleRealtimeMessage)
+    console.log('👂 Listening for realtime messages from iframe')
+    
+    return () => {
+      window.removeEventListener('message', handleRealtimeMessage)
+    }
+  }, [])
+
+  // =====================
+  // REALTIME: Poll /api/realtime for background polling messages
+  // =====================
+  useEffect(() => {
+    const pollRealtime = async () => {
+      try {
+        const url = lastRealtimeCheckRef.current 
+          ? `/api/realtime?since=${encodeURIComponent(lastRealtimeCheckRef.current)}&clear=true`
+          : '/api/realtime?limit=20&clear=true'
+        
+        const res = await fetch(url)
+        const json = await res.json()
+        
+        if (json.ok && json.messages?.length > 0) {
+          console.log('⚡ Realtime (Polling): received', json.messages.length, 'new messages')
+          if (realtimeStatus !== 'websocket') {
+            setRealtimeStatus('polling')
+          }
+          setLastRealtimeMessage(new Date().toLocaleTimeString('fr-FR'))
+          
+          // Add new messages to state
+          const newMsgs: Message[] = json.messages.map((m: any, i: number) => ({
+            id: m.urn || `poll-${Date.now()}-${i}`,
+            conversationId: m.conversationId || null,
+            content: m.content || '',
+            isFromMe: false,
+            timestamp: m.timestamp || new Date().toISOString(),
+            attachments: m.attachments || null
+          }))
+          
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id))
+            const unique = newMsgs.filter(m => !existingIds.has(m.id))
+            if (unique.length > 0) {
+              console.log('⚡ Adding', unique.length, 'new messages from polling')
+              return [...prev, ...unique]
+            }
+            return prev
+          })
+          
+          // Update conversation previews
+          for (const msg of json.messages) {
+            setConversations(prev => prev.map(conv => {
+              const convId = conv.id
+              const msgConvId = msg.conversationId || ''
+              if (msgConvId.includes(convId) || convId.includes(msgConvId.split(':').pop() || '')) {
+                return {
+                  ...conv,
+                  lastMessagePreview: msg.content || '[Attachment]',
+                  lastMessageTime: msg.timestamp,
+                  unreadCount: conv.unreadCount + 1
+                }
+              }
+              return conv
+            }))
+          }
+        }
+        
+        lastRealtimeCheckRef.current = new Date().toISOString()
+      } catch (e) {
+        console.error('Realtime poll error:', e)
+      }
+    }
+    
+    // Poll every 5 seconds for realtime updates
+    const interval = setInterval(pollRealtime, 5000)
+    pollRealtime() // Initial poll
+    
+    return () => clearInterval(interval)
+  }, [realtimeStatus])
 
   // Manual sync
   const handleSync = async () => {
@@ -246,6 +387,18 @@ export default function CRMPage() {
             <span className="text-white font-bold text-sm">Li</span>
           </div>
           <span className="font-semibold">LinkedIn CRM</span>
+          {realtimeStatus !== 'disconnected' && (
+            <span className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${
+              realtimeStatus === 'websocket' 
+                ? 'bg-green-600/20 text-green-400' 
+                : 'bg-blue-600/20 text-blue-400'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                realtimeStatus === 'websocket' ? 'bg-green-400' : 'bg-blue-400'
+              } animate-pulse`}></span>
+              {realtimeStatus === 'websocket' ? 'Live' : 'Polling'}
+            </span>
+          )}
         </div>
         
         <div className="flex-1 max-w-md mx-4">

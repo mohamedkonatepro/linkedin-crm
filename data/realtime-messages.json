@@ -1,0 +1,13 @@
+{
+  "messages": [
+    {
+      "urn": "urn:li:msg_message:test-123",
+      "conversationId": "urn:li:msg_conversation:test-conv",
+      "content": "Test message!",
+      "timestamp": "2026-02-02T06:32:00Z",
+      "sender": "test-sender",
+      "receivedAt": "2026-02-02T06:32:12.734Z"
+    }
+  ],
+  "lastUpdate": "2026-02-02T06:32:12.734Z"
+}
