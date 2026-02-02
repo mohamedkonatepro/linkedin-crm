@@ -83,7 +83,7 @@ export default function CRMPage() {
         }))
         
         // Messages are sent flat in data.messages (not nested in conversations)
-        const msgs = (json.data.messages || []).map((m: any, i: number) => ({
+        const apiMsgs = (json.data.messages || []).map((m: any, i: number) => ({
           id: m.urn || `msg-${i}`,
           conversationId: m.conversationId || null,
           content: m.content || '',
@@ -93,7 +93,21 @@ export default function CRMPage() {
         }))
         
         setConversations(convs)
-        setMessages(msgs)
+        
+        // MERGE instead of overwrite: keep existing messages, add new ones from API
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id))
+          const apiIds = new Set(apiMsgs.map((m: Message) => m.id))
+          
+          // Keep messages that are in current state but NOT in API (realtime messages)
+          const realtimeMessages = prev.filter(m => !apiIds.has(m.id))
+          
+          // Add all API messages + realtime messages that aren't duplicates
+          const merged = [...apiMsgs, ...realtimeMessages]
+          
+          console.log(`📊 Merge: ${apiMsgs.length} API + ${realtimeMessages.length} realtime = ${merged.length} total`)
+          return merged
+        })
         setLastSync(new Date().toLocaleTimeString('fr-FR'))
       }
     } catch (e) {
@@ -369,9 +383,25 @@ export default function CRMPage() {
   // Selected conversation
   const selectedConv = conversations.find(c => c.id === selectedConvId)
   
+  // Helper to extract thread ID from URN for flexible matching
+  const extractThreadId = (urn: string | null): string => {
+    if (!urn) return ''
+    // Extract the thread part (e.g., "2-M2EzMzliNzU..." from full URN)
+    const match = urn.match(/2-[A-Za-z0-9_=-]+/)
+    return match ? match[0] : urn
+  }
+  
   // Filter messages for selected conversation and sort by timestamp
+  const selectedThreadId = extractThreadId(selectedConvId)
   const selectedMessages = messages
-    .filter(m => m.conversationId === selectedConvId)
+    .filter(m => {
+      if (!selectedConvId) return false
+      // Exact match
+      if (m.conversationId === selectedConvId) return true
+      // Flexible match on thread ID
+      const msgThreadId = extractThreadId(m.conversationId)
+      return msgThreadId && selectedThreadId && msgThreadId === selectedThreadId
+    })
     .sort((a, b) => {
       const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
       const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
