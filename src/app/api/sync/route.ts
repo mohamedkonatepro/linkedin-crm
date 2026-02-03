@@ -133,14 +133,14 @@ export async function POST(request: NextRequest) {
 // GET: Retrieve all synced data
 export async function GET(request: NextRequest) {
   try {
-    // Get all conversations
+    // Get all conversations with note
     const { data: conversations, error: convError } = await supabase
       .from('conversations')
-      .select('*')
+      .select('*, note')
 
     if (convError) throw convError
 
-    // Get all messages ordered by sent_at DESC to easily find last message per conversation
+    // Get all messages ordered by sent_at DESC
     const { data: messages, error: msgError } = await supabase
       .from('messages')
       .select('*')
@@ -148,7 +148,40 @@ export async function GET(request: NextRequest) {
 
     if (msgError) throw msgError
 
-    // Group messages by conversation and find the last message for each
+    // Get all conversation tags with tag info
+    const { data: conversationTags } = await supabase
+      .from('conversation_tags')
+      .select('conversation_id, tags(id, name, color)')
+
+    // Get all active reminders
+    const { data: reminders } = await supabase
+      .from('reminders')
+      .select('*')
+      .eq('is_handled', false)
+
+    // Group tags by conversation
+    const tagsByConv = new Map<string, any[]>()
+    for (const ct of (conversationTags || [])) {
+      const convId = ct.conversation_id
+      if (!tagsByConv.has(convId)) {
+        tagsByConv.set(convId, [])
+      }
+      if (ct.tags) {
+        tagsByConv.get(convId)!.push(ct.tags)
+      }
+    }
+
+    // Group reminders by conversation
+    const remindersByConv = new Map<string, any>()
+    for (const reminder of (reminders || [])) {
+      const convId = reminder.conversation_id
+      // Keep the earliest active reminder per conversation
+      if (!remindersByConv.has(convId) || new Date(reminder.reminder_at) < new Date(remindersByConv.get(convId).reminder_at)) {
+        remindersByConv.set(convId, reminder)
+      }
+    }
+
+    // Group messages by conversation
     const messagesByConv = new Map<string, DbMessage[]>()
     for (const msg of (messages || [])) {
       const convId = msg.conversation_id
@@ -159,12 +192,10 @@ export async function GET(request: NextRequest) {
       messagesByConv.get(convId)!.push(msg)
     }
 
-    // Helper to get preview text from message (handles attachments)
+    // Helper to get preview text from message
     const getMessagePreview = (msg: DbMessage | undefined): string => {
       if (!msg) return ''
       if (msg.content) return msg.content
-
-      // Check for attachments
       if (msg.attachments && Array.isArray(msg.attachments) && msg.attachments.length > 0) {
         const att = msg.attachments[0]
         if (att.type === 'image') return '📷 Photo'
@@ -173,36 +204,49 @@ export async function GET(request: NextRequest) {
         if (att.type === 'file') return '📎 ' + (att.name || 'Fichier')
         return '📎 Pièce jointe'
       }
-
       return ''
     }
 
-    // Transform conversations with computed lastMessagePreview from actual messages
-    const syncConversations = (conversations || []).map((conv: DbConversation, index: number) => {
+    // Transform conversations
+    const syncConversations = (conversations || []).map((conv: any, index: number) => {
       const convMessages = messagesByConv.get(conv.id) || []
-      const lastMessage = convMessages[0] // Already sorted DESC, so first is newest
+      const lastMessage = convMessages[0]
+      const convTags = tagsByConv.get(conv.id) || []
+      const activeReminder = remindersByConv.get(conv.id)
 
       return {
         index,
+        id: conv.id, // Include DB id for tags/reminders/notes
         threadId: `urn:li:msg_conversation:${conv.linkedin_thread_id}`,
         linkedinId: conv.contact_linkedin_id,
         name: conv.contact_name,
         avatarUrl: conv.contact_avatar_url,
         headline: conv.contact_headline,
-        // Use actual last message content, with attachment fallback
         lastMessagePreview: getMessagePreview(lastMessage) || conv.last_message_preview || '',
         lastMessageTime: lastMessage?.sent_at || conv.last_message_at,
         isUnread: !conv.is_read,
         isStarred: conv.is_starred,
         isActive: false,
         lastMessageFromMe: lastMessage?.is_from_me ?? conv.last_message_from_me,
-        // Reset unread count on page load - will be incremented by realtime
         unreadCount: 0,
+        // New fields
+        tags: convTags,
+        note: conv.note || '',
+        reminder: activeReminder ? {
+          id: activeReminder.id,
+          reminderAt: activeReminder.reminder_at,
+          message: activeReminder.message,
+          isTriggered: new Date(activeReminder.reminder_at) <= new Date()
+        } : null,
       }
     })
 
-    // Sort conversations by lastMessageTime DESC
+    // Sort: reminders triggered first, then by lastMessageTime DESC
     syncConversations.sort((a, b) => {
+      // Triggered reminders first
+      if (a.reminder?.isTriggered && !b.reminder?.isTriggered) return -1
+      if (!a.reminder?.isTriggered && b.reminder?.isTriggered) return 1
+      // Then by time
       const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
       const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
       return timeB - timeA
