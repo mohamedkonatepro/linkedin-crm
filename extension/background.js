@@ -96,33 +96,40 @@ async function pollForNewMessages() {
     console.log('⏳ Polling: No queryIds yet, waiting...');
     return;
   }
-  
+
   try {
     console.log('🔄 Polling for new messages...');
     POLLING_CONFIG.lastPollTime = Date.now();
-    
+
+    // Get userUrn to detect isFromMe
+    const userUrn = await getMailboxUrn();
+    const myProfileId = userUrn?.split(':').pop()?.split(',')[0];
+
     // Fetch recent conversations to check for new activity
     const conversations = await fetchConversations();
-    
+
     // Only fetch messages for conversations with recent activity
     const recentConvs = conversations.slice(0, 10); // Top 10 most recent
     const newMessages = [];
-    
+
     for (const conv of recentConvs) {
       // Check if this conversation has newer activity than our last poll
-      if (POLLING_CONFIG.lastMessageTimestamp && 
+      if (POLLING_CONFIG.lastMessageTimestamp &&
           conv.lastActivityAt <= POLLING_CONFIG.lastMessageTimestamp) {
         continue;
       }
-      
+
       try {
         const result = await fetchMessages(conv.entityUrn || conv._fullUrn, 5);
-        
+
         for (const msg of result.messages || []) {
           if (!seenMessageUrns.has(msg.entityUrn)) {
             seenMessageUrns.add(msg.entityUrn);
+            // Detect isFromMe by comparing sender with userUrn
+            const isFromMe = myProfileId && msg.sender ? msg.sender.includes(myProfileId) : false;
             newMessages.push({
               ...msg,
+              isFromMe,
               conversationUrn: conv.entityUrn || conv._fullUrn,
               participantName: conv._participantName
             });
@@ -131,7 +138,7 @@ async function pollForNewMessages() {
       } catch (e) {
         console.warn('Error fetching messages for', conv._participantName, ':', e.message);
       }
-      
+
       // Small delay between conversations
       await new Promise(r => setTimeout(r, 300));
     }
@@ -176,12 +183,13 @@ async function notifyCRMServer(messages) {
           timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : new Date().toISOString(),
           sender: msg.sender,
           participantName: msg.participantName,
-          attachments: msg.attachments || null
+          attachments: msg.attachments || null,
+          isFromMe: msg.isFromMe || false
         })),
         timestamp: new Date().toISOString()
       })
     });
-    
+
     if (response.ok) {
       console.log('✅ Notified CRM server of new messages');
     }

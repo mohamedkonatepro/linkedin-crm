@@ -1,13 +1,38 @@
 {
   "messages": [
     {
-      "urn": "urn:li:msg_message:test-123",
-      "conversationId": "urn:li:msg_conversation:test-conv",
-      "content": "Test message!",
-      "timestamp": "2026-02-02T06:32:00Z",
-      "sender": "test-sender",
-      "receivedAt": "2026-02-02T06:32:12.734Z"
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3Nzk5ODc1NWI3MTM2NC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "test3",
+      "timestamp": "2026-02-03T00:19:58.755Z",
+      "sender": "urn:li:msg_messagingParticipant:urn:li:fsd_profile:ACoAAD_LQawBYJkuLVXlgRYG5GFV87529gx_ELI",
+      "participantName": "Max Leroux",
+      "attachments": null,
+      "isFromMe": false,
+      "receivedAt": "2026-02-03T00:20:06.397Z"
+    },
+    {
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NzIwNjYyMmIyMjU1OC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "test2",
+      "timestamp": "2026-02-03T00:06:46.622Z",
+      "sender": "urn:li:msg_messagingParticipant:urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU",
+      "participantName": "Max Leroux",
+      "attachments": null,
+      "isFromMe": true,
+      "receivedAt": "2026-02-03T00:07:06.541Z"
+    },
+    {
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NzE0NjI1NWIxMTgwNC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "test1",
+      "timestamp": "2026-02-03T00:05:46.255Z",
+      "sender": "urn:li:msg_messagingParticipant:urn:li:fsd_profile:ACoAAD_LQawBYJkuLVXlgRYG5GFV87529gx_ELI",
+      "participantName": "Max Leroux",
+      "attachments": null,
+      "isFromMe": false,
+      "receivedAt": "2026-02-03T00:06:06.707Z"
     }
   ],
-  "lastUpdate": "2026-02-02T06:32:12.734Z"
+  "lastUpdate": "2026-02-03T00:20:06.397Z"
 }

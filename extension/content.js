@@ -16,6 +16,17 @@ let config = {
 // Track seen message URNs to avoid duplicates
 const seenMessageUrns = new Set();
 
+// Cache the user's URN for isFromMe detection in WebSocket messages
+let cachedUserUrn = null;
+
+// Try to load cached userUrn from storage
+chrome.storage.local.get(['userUrn'], (result) => {
+  if (result.userUrn) {
+    cachedUserUrn = result.userUrn;
+    console.log('📋 Loaded cached userUrn:', cachedUserUrn?.substring(0, 30) + '...');
+  }
+});
+
 // =====================
 // WEBSOCKET INTERCEPTION FOR REALTIME
 // =====================
@@ -163,11 +174,21 @@ function handleLinkedInRealtimeData(data) {
 }
 
 function extractMessageData(item) {
+  const sender = item['*sender'] || item.sender?.entityUrn || item.senderUrn;
+
+  // Determine if message is from me by comparing sender with cached userUrn
+  let isFromMe = false;
+  if (cachedUserUrn && sender) {
+    const myProfileId = cachedUserUrn.split(':').pop()?.split(',')[0];
+    isFromMe = myProfileId ? sender.includes(myProfileId) : false;
+  }
+
   return {
     entityUrn: item.entityUrn,
     body: item.body?.text || item.body || '',
     createdAt: item.deliveredAt || item.createdAt,
-    sender: item['*sender'] || item.sender?.entityUrn || item.senderUrn,
+    sender: sender,
+    isFromMe: isFromMe,
     conversationUrn: item['*conversation'] || item.conversationUrn || extractConversationUrn(item.entityUrn),
     attachments: extractAttachments(item.renderContent || item.attachments)
   };
@@ -361,6 +382,13 @@ async function performFullSync() {
     const apiConversations = convResponse.data.slice(0, config.convLimit);
     const myUrn = convResponse.userUrn; // Get the connected user's URN
     console.log(`📬 Got ${apiConversations.length} conversations from API (myUrn: ${myUrn?.substring(0, 30)}...)`);
+
+    // Cache the userUrn for WebSocket isFromMe detection
+    if (myUrn) {
+      cachedUserUrn = myUrn;
+      chrome.storage.local.set({ userUrn: myUrn });
+      console.log('💾 Cached userUrn for realtime isFromMe detection');
+    }
     
     // Step 2: Transform conversations
     const conversations = apiConversations.map((conv, i) => {

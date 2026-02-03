@@ -1,0 +1,622 @@
+{
+  "type": "api_sync",
+  "timestamp": "2026-02-03T00:09:40.919Z",
+  "conversations": [
+    {
+      "threadId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "linkedinId": "urn:li:msg_messagingParticipant:urn:li:fsd_profile:ACoAAD_LQawBYJkuLVXlgRYG5GFV87529gx_ELI",
+      "name": "Max Leroux",
+      "avatarUrl": "https://media.licdn.com/dms/image/v2/D4E03AQH53cvFAlRuKQ/profile-displayphoto-scale_200_200/B4EZp0wF_JGYAY-/0/1762895357480?e=1771459200&v=beta&t=Ji7iEgE9Zg6aNoLwOUPmLK92PQphiJ9tWcu8pN5oEwA",
+      "headline": "Content Creator | Tech & IA | Freelance",
+      "lastMessagePreview": "",
+      "lastMessageTime": "2026-02-03T00:06:46.622Z",
+      "isUnread": false,
+      "isStarred": false,
+      "isActive": false
+    },
+    {
+      "threadId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-NGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "linkedinId": "urn:li:msg_messagingParticipant:urn:li:fsd_profile:ACoAABeTPQYB2V7lIKHoH7OAQrFfen43Ze2-Z-w",
+      "name": "Chayma Fliss",
+      "avatarUrl": "https://media.licdn.com/dms/image/v2/D4D03AQH1aCfUq3UneQ/profile-displayphoto-shrink_100_100/profile-displayphoto-shrink_100_100/0/1718538612023?e=1771459200&v=beta&t=3Niw2eUV7A7HPdO61hCeuzjMhHKzQdQPOAJWvKbeImA",
+      "headline": "IT Talent Acquisition",
+      "lastMessagePreview": "",
+      "lastMessageTime": "2026-02-02T16:17:13.531Z",
+      "isUnread": false,
+      "isStarred": false,
+      "isActive": false
+    },
+    {
+      "threadId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "linkedinId": "urn:li:msg_messagingParticipant:urn:li:fsd_profile:ACoAAASdMV0BHyAhSYNurnI07rVbVPt-wx_dd1Y",
+      "name": "Nicolas ADAM",
+      "avatarUrl": "https://media.licdn.com/dms/image/v2/D4E03AQGSGnI48CRTbA/profile-displayphoto-shrink_100_100/profile-displayphoto-shrink_100_100/0/1729167959263?e=1771459200&v=beta&t=edB6KiXr_QhfimqQ0fCWM0MC73Mho3NErpfmI5grlaA",
+      "headline": "CTPO | J’aide les Techs à développer leur posture stratégique face aux CEO et dirigeants",
+      "lastMessagePreview": "",
+      "lastMessageTime": "2026-02-02T14:11:42.273Z",
+      "isUnread": false,
+      "isStarred": false,
+      "isActive": false
+    },
+    {
+      "threadId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MzE5NGUyYmQtYjk3Ny00NTExLWFkMjAtNTNhODVkYzA2MmQ3XzEwMA==)",
+      "linkedinId": "urn:li:msg_messagingParticipant:urn:li:fsd_profile:ACoAAAQ0hfoBgg0TNhdCDWYS-8f8qkwfQVadcnI",
+      "name": "Anthony Virapin",
+      "avatarUrl": "https://media.licdn.com/dms/image/v2/C4D03AQEIVUap4b4DIg/profile-displayphoto-shrink_100_100/profile-displayphoto-shrink_100_100/0/1516875508455?e=1771459200&v=beta&t=vhnRgqw9aJKu-q8XYXORmfpVU7UL3LMWDBzMqvnmySU",
+      "headline": "Worldwide Leader, Microsoft Entrepreneurship for Positive Impact",
+      "lastMessagePreview": "",
+      "lastMessageTime": "2026-01-30T07:16:07.633Z",
+      "isUnread": false,
+      "isStarred": false,
+      "isActive": false
+    },
+    {
+      "threadId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-YTZlNjRiYmQtYjMwZi00YmYzLTgxMzYtODExMzBjMGM1MzZiXzEwMA==)",
+      "linkedinId": "urn:li:msg_messagingParticipant:urn:li:fsd_profile:ACoAACXyZoIBjiDZTHtMa2qie-fmmLYN9gsMIFU",
+      "name": "Aloïs CEOLA",
+      "avatarUrl": "https://media.licdn.com/dms/image/v2/D4E03AQEY8RnOSsmgSA/profile-displayphoto-shrink_100_100/profile-displayphoto-shrink_100_100/0/1712649223323?e=1771459200&v=beta&t=KfQQruT8qkJ5DNeZhfxtwRj6X9YeStUs2lBg7EcC-RI",
+      "headline": "CTO | NAMKIN Industrial Marketing | Build applications that follow your need to enhance your day-to-day business",
+      "lastMessagePreview": "",
+      "lastMessageTime": "2026-01-28T14:25:57.892Z",
+      "isUnread": true,
+      "isStarred": false,
+      "isActive": false
+    }
+  ],
+  "messages": [
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "hello",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T23:45:19.702Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NTkxOTcwMmI4MTc1OC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "🤖 Test complet A-Z par Max (agent) via UI - 00:32",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T00:31:31.483Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc2OTk5MjI5MTQ4M2IxNzk3OS0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "last",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T09:31:45.572Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAyNDcwNTU3MmIyMjgwMS0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "test2",
+      "isFromMe": true,
+      "timestamp": "2026-02-03T00:06:46.622Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NzIwNjYyMmIyMjU1OC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "test",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T09:21:15.318Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAyNDA3NTMxOGIxNjQzMi0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "✅ Fix appliqué ! Les messages ne devraient plus disparaître. Teste en m'envoyant un message depuis le CRM 👀",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T07:19:16.868Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAxNjc1Njg2OGI4ODU3Ny0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "test1",
+      "isFromMe": false,
+      "timestamp": "2026-02-03T00:05:46.255Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NzE0NjI1NWIxMTgwNC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "test",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T23:52:10.057Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NjMzMDA1N2I5NDIwNS0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "test",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T09:56:08.370Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAyNjE2ODM3MGIxMzQwOC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "🚀 Test dynamique final A-Z - 00:38",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T00:37:05.406Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc2OTk5MjYyNTQwNmI5MDk3NC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "realtime",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T09:35:07.919Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAyNDkwNzkxOWI4OTYxMy0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "hi",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T23:51:20.768Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NjI4MDc2OGI2NDU4Ny0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "non",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T09:55:40.719Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAyNjE0MDcxOWI5OTA4Mi0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "ok",
+      "isFromMe": false,
+      "timestamp": "2026-02-01T22:34:40.234Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc2OTk4NTI4MDIzNGI5NDMxNy0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "Test Last",
+      "isFromMe": true,
+      "timestamp": "2026-02-03T00:01:58.230Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NjkxODIzMGIyNjU1NC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "again",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T09:24:00.157Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAyNDI0MDE1N2I2Njc2My0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "yo",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T23:56:12.020Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA3NjU3MjAyMGI5MDgxNi0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "🧪 Test realtime CRM - 07:08 UTC",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T07:11:43.203Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAxNjMwMzIwM2I3MzIwNy0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "ok",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T09:18:51.173Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAyMzkzMTE3M2I3NDA5Ni0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "Test realtime",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T06:53:52.218Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAxNTIzMjIxOGIzMzMzMS0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-NGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "content": "oui",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T16:14:18.796Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0ODg1ODc5NmI1NzQwMi0xMDAmNGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-NGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "content": "Bonjour Chayma, c'est une mission freelance ?",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T16:13:53.766Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0ODgzMzc2NmI2Mzg4Ny0xMDAmNGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-NGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "content": "je peux avoir plus de détail merci",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T16:14:53.431Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0ODg5MzQzMWIzNTA3MS0xMDAmNGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-NGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "content": "Merci pour votre retour , le poste est en freelance  voici une idée : \nDéveloppement backend sur Node.js / Express et Java\n\nConception d’APIs et d’architectures microservices (Apigee)\n\nIntégration de connecteurs M365, Jira, Teams, SharePoint\n\nEnvironnement Cloud & conteneurs : GCP (GKE) ou AWS, Docker, Kubernetes\n\nCI/CD & DevOps : GitLab CI, tests unitaires/intégration/E2E, SonarQube\n\nSécurité & IAM : Vault, Okta\n\nObservabilité et performance : Dynatrace\n\nContribution aux usages IA générative (LLM, RAG, prompt engineering)\n\nMéthodologies Agile / SAFe, anglais technique requis",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T16:17:13.531Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0OTAzMzUzMWI4MTE2My0xMDAmNGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-NGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "content": "Bonjour , \n\nJ'espère que vous allez bien ? Je suis Chayma, chargée de recrutement.\nActuellement, nous sommes à la recherche d' un Développeur Node js /Expresse \nEtes vous a l'écoute du marché ?",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T15:11:55.552Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0NTExNTU1MmI2NDQ4Mi0xMDAmNGI4NzlhMjktYTk0My00ODc4LTlkZGUtZTk2Yjc5MzQwYWU0XzEwMA==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Tiens, au fait, je suis en train de lancer un bootcamp en ce moment. \n\nJ'ai fait une page pour l'expliquer. \n\nTu serais chaud pour me faire un feedback dessus ? ",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T14:01:24.380Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0MDg4NDM4MGI4NzM2NC0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Je les capte, mais ce ne sont pas des interactions visibles",
+      "isFromMe": false,
+      "timestamp": "2025-09-23T08:04:28.893Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1ODYxNDY2ODg5M2I2Nzg0Mi0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Tu es en mission actuellement ou tu recherches ?",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T13:35:58.509Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAzOTM1ODUwOWI0MDA1OS0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Qu'est-ce que tu deviens ? Je vois que tu es de plus en plus actif sur les réseaux ^^",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T12:58:48.652Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAzNzEyODY1MmI4NDY0Ny0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "De mon côté, la cible de mes posts sont plutôt fondateurs et dirigeants ",
+      "isFromMe": false,
+      "timestamp": "2025-09-23T08:03:53.175Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1ODYxNDYzMzE3NWI2NDI1OC0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "A votre avis, mon cher Mohamed 🙂",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T14:11:42.273Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0MTUwMjI3M2I0MzUzMS0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "J’avance dans ma vie de freelance/indépendant, j’essaie surtout d’être régulier pour gagner en visibilité",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T13:25:44.997Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAzODc0NDk5N2I0NDk1MS0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Ça marche, je regarde ça :)",
+      "isFromMe": true,
+      "timestamp": "2025-10-02T12:34:40.516Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1OTQwODQ4MDUxNmI1NTYzNS0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Hello Mohamed, \n\nJe viens de faire un post pour communiquer sur l'annuaire\n\nhttps://www.linkedin.com/posts/nicolas-adam-9b9b1121_jai-vu-des-startups-g%C3%A2cher-un-%C3%A9norme-potentiel-activity-7379483088030019584-xBMM\n\nN'hésite pas à liker, commenter ou republier pour lui donner de la visibilité.\n\nLe but est que cela puisse créer les bonnes connexions entre fondateurs et devs.\n\nPS : Je suis ouvert aux retours sur l'annuaire ^^",
+      "isFromMe": false,
+      "timestamp": "2025-10-02T12:31:42.879Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1OTQwODMwMjg3OWI2MDI3Ny0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Ouais si tu veux ",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T14:06:25.410Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0MTE4NTQxMGIzMjQ1My0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Ah d’accord. Et je suppose que tu vas filtrer en fonction de la pertinence du contact si c’est un décideur ou pas dans ton cas pour engager une conversation ? ",
+      "isFromMe": true,
+      "timestamp": "2025-09-23T08:01:25.865Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1ODYxNDQ4NTg2NWI5NTUxNy0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Pour les interactions en dessous du post ça je suppose peu importe parce que plus il y a d’interaction plus il y a de la visibilité, mais en inbox ",
+      "isFromMe": true,
+      "timestamp": "2025-09-23T08:02:25.485Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1ODYxNDU0NTQ4NWIxNjY0My0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "C’est pour ça que je suis toujours actif",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T13:52:04.718Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0MDMyNDcxOGI1MzY5OC0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Oui, il faut vraiment identifier des indices qu'il y'a un enjeu",
+      "isFromMe": false,
+      "timestamp": "2025-09-23T08:03:23.413Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1ODYxNDYwMzQxM2I4OTczMi0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Oui actuellement je suis en mission mais après je suis plus dans une optique de ne pas dépendre d’un seul client",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T13:51:55.300Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0MDMxNTMwMGI0MzU4OC0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Coucou Mohamed, ça fait longtemps",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T12:58:20.919Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAzNzEwMDkxOWI2NTAzNi0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "OK ça marche, moi je suis encore à ce step d’identifier et voir avec qui créer les bonnes interactions ",
+      "isFromMe": true,
+      "timestamp": "2025-09-23T08:22:15.530Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1ODYxNTczNTUzMGI1OTUxOC0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "https://tinyurl.com/TechCEOPartner",
+      "isFromMe": false,
+      "timestamp": "2026-02-02T14:10:55.574Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDA0MTQ1NTU3NGI3MDc5NS0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Hello Nicolas, Yes ça fait longtemps :)",
+      "isFromMe": true,
+      "timestamp": "2026-02-02T13:23:41.920Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc3MDAzODYyMTkyMGI2NjQ1NS0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-Y2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "content": "Hello Nicolas ",
+      "isFromMe": true,
+      "timestamp": "2025-10-02T12:34:28.260Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc1OTQwODQ2ODI2MGI5NjAxOC0xMDAmY2JjNjUxMzUtNWIwMy00ZGFkLWI4YTctNTc5OGY1Y2FlMDZjXzAxMg==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MzE5NGUyYmQtYjk3Ny00NTExLWFkMjAtNTNhODVkYzA2MmQ3XzEwMA==)",
+      "content": "Bonjour Mohamed, \nJe m'appelle Anthony Virapin et j'accompagne, au sein de Microsoft, les éditeurs de logiciels à impact social dans le cadre de l'initiative Entrepreneurship for Positive Impact. Une partie de notre travail consiste à identifier et soutenir les solutions technologiques qui aident les entreprises à naviguer les grands enjeux de transformation numérique. \nParmi celles que nous suivons de près, Fruggr se distingue par une approche pragmatique de la gouvernance de l'IA. Leur plateforme permet notamment : Un registre centralisé de tous vos projets IA pour une visibilité complète, Une évaluation automatisée de l'impact environnemental et des coûts de l'IA, Une conformité garantie avec l'AI Act et les réglementations en vigueur. Si votre organisation déploie ou prévoit de déployer des solutions d'IA en 2026, Fruggr peut vous aider à maîtriser les coûts, réduire les risques et aligner vos initiatives IA sur vos objectifs ESG. Un échange avec Frédérick Marchand, le fondateur, est possible ici. \nJe reste bien entendu disponible si vous souhaitez échanger plus largement sur les innovations que nous accompagnons chez Microsoft qui lie l'IA et l'environnement. \nBien à vous, Anthony Virapin ",
+      "isFromMe": false,
+      "timestamp": "2026-01-30T07:16:07.633Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc2OTc1NzM2NzYzM2I2OTQ1My0xMDAmMzE5NGUyYmQtYjk3Ny00NTExLWFkMjAtNTNhODVkYzA2MmQ3XzEwMA==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-YTZlNjRiYmQtYjMwZi00YmYzLTgxMzYtODExMzBjMGM1MzZiXzEwMA==)",
+      "content": "Bonjour Aloïs,\nJe développe mon réseau dans la Tech, j'aime bien échanger avec des pros du secteur.\n\nOn se connecte ?",
+      "isFromMe": true,
+      "timestamp": "2026-01-28T14:25:57.892Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc2OTYxMDM1Nzg5MmIzMTQwMy0xMDAmYTZlNjRiYmQtYjMwZi00YmYzLTgxMzYtODExMzBjMGM1MzZiXzEwMA==)",
+      "attachments": null,
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "",
+      "isFromMe": true,
+      "timestamp": "2026-02-01T19:44:00.894Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc2OTk3NTA0MDg5NGI5MDM3OC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "Profile (2).pdf",
+          "url": "https://www.linkedin.com/dms/prv/vid/v2/D4E06AQHPOdqZUqm4DQ/messaging-attachmentFile/B4EZwau8iGKwAA-/0/1769975040628?m=AQKWiFEEfrv8FwAAAZwg0W7etbSGl6KIt4BuoU5i3uPb8sWSIKo8BU51Rw&ne=1&v=beta&t=JAnUy_9JFmxuzzfnyFEPf_mkZRLeczarim_rTKCN_xY",
+          "size": 71456,
+          "mediaType": "application/pdf"
+        }
+      ],
+      "sender": {
+        "name": null
+      }
+    },
+    {
+      "conversationId": "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-M2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "content": "",
+      "isFromMe": true,
+      "timestamp": "2026-02-01T19:45:02.372Z",
+      "urn": "urn:li:msg_message:(urn:li:fsd_profile:ACoAAB-ldo0BRvt5jQW1OOXOk0ez8OWs7IBSKCU,2-MTc2OTk3NTEwMjM3MmIzMDY1MC0xMDAmM2EzMzliNzUtZTc2ZC00YWNiLTg5NjAtMDZiYmExMTc2ZTE3XzAxMg==)",
+      "attachments": [
+        {
+          "type": "image",
+          "url": "https://www.linkedin.com/dms/prv/image/v2/D4E06AQG8uGFzVGD5mw/messaging-image-720/B4EZwavLXIKoAY-/0/1769975101487?m=AQJYdusjOOuAewAAAZwg0W7RJOQtp2fApOJYMGdFbDisClo1_6GzItFXFQ&ne=1&v=beta&t=V4fa9p9zN8vtLJRbHZBmLK34qL5zb652jJwZibguRKE",
+          "asset": "urn:li:digitalmediaAsset:D4E06AQG8uGFzVGD5mw"
+        }
+      ],
+      "sender": {
+        "name": null
+      }
+    }
+  ],
+  "currentConversation": null
+}
