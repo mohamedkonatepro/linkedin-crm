@@ -8,7 +8,6 @@ const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const syncBtn = document.getElementById('syncBtn');
 const syncBtnText = document.getElementById('syncBtnText');
-const apiUrl = document.getElementById('apiUrl');
 const convLimit = document.getElementById('convLimit');
 const msgLimit = document.getElementById('msgLimit');
 const convCount = document.getElementById('convCount');
@@ -29,10 +28,9 @@ let linkedInFrameId = null;
 
 async function loadConfig() {
   const result = await chrome.storage.local.get([
-    'apiUrl', 'convLimit', 'msgLimit', 'lastSyncTime', 'lastStats'
+    'convLimit', 'msgLimit', 'lastSyncTime', 'lastStats'
   ]);
   
-  if (result.apiUrl) apiUrl.value = result.apiUrl;
   if (result.convLimit) convLimit.value = result.convLimit;
   if (result.msgLimit) msgLimit.value = result.msgLimit;
   
@@ -48,7 +46,6 @@ async function loadConfig() {
 
 async function saveConfig() {
   await chrome.storage.local.set({
-    apiUrl: apiUrl.value,
     convLimit: parseInt(convLimit.value) || 50,
     msgLimit: parseInt(msgLimit.value) || 20,
   });
@@ -198,7 +195,6 @@ async function triggerSync() {
   showProgress(true, 0, 'Démarrage...');
   
   const config = {
-    apiUrl: apiUrl.value,
     convLimit: parseInt(convLimit.value) || 50,
     msgLimit: parseInt(msgLimit.value) || 20,
   };
@@ -268,8 +264,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // =====================
 
 syncBtn.addEventListener('click', triggerSync);
-apiUrl.addEventListener('change', saveConfig);
-apiUrl.addEventListener('blur', saveConfig);
 convLimit.addEventListener('change', saveConfig);
 msgLimit.addEventListener('change', saveConfig);
 
