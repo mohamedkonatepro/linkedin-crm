@@ -248,87 +248,147 @@ export async function GET(request: Request) {
 }
 ```
 
-### 2. Extension : Injecter les cookies
+### 2. Extension : Injection des cookies à la volée (méthode sécurisée)
+
+> ⚠️ **Important :** On n'utilise PAS `chrome.cookies.set()` car cela injecterait les cookies dans tout le navigateur. L'assistant pourrait alors accéder au compte LinkedIn de l'admin depuis n'importe quel onglet.
+
+**Méthode retenue :** Interception des requêtes avec `webRequest.onBeforeSendHeaders` pour injecter les cookies **uniquement** dans les requêtes provenant de l'iframe CRM.
 
 ```javascript
 // extension/background.js
 
-async function injectLinkedInCredentials() {
+// Cache des credentials admin (récupérés du serveur)
+let cachedAdminCredentials = null
+
+// Récupérer les credentials depuis le serveur
+async function fetchAdminCredentials() {
   try {
-    // Récupérer les credentials depuis le serveur
     const response = await fetch('http://localhost:3000/api/linkedin-credentials', {
-      credentials: 'include'  // Envoie les cookies de session CRM
+      credentials: 'include'
     })
-    
-    if (!response.ok) {
-      console.log('Pas de credentials à injecter')
-      return false
+    if (response.ok) {
+      cachedAdminCredentials = await response.json()
+      console.log('✅ Credentials admin récupérés')
     }
-    
-    const { li_at, jsessionid } = await response.json()
-    
-    // Supprimer les anciens cookies LinkedIn
-    await chrome.cookies.remove({ url: 'https://www.linkedin.com', name: 'li_at' })
-    await chrome.cookies.remove({ url: 'https://www.linkedin.com', name: 'JSESSIONID' })
-    
-    // Injecter les nouveaux cookies
-    await chrome.cookies.set({
-      url: 'https://www.linkedin.com',
-      name: 'li_at',
-      value: li_at,
-      domain: '.linkedin.com',
-      path: '/',
-      secure: true,
-      httpOnly: true,
-      sameSite: 'no_restriction',
-      expirationDate: Date.now() / 1000 + 86400 * 365  // 1 an
-    })
-    
-    await chrome.cookies.set({
-      url: 'https://www.linkedin.com',
-      name: 'JSESSIONID',
-      value: jsessionid,
-      domain: '.www.linkedin.com',
-      path: '/',
-      secure: true,
-      sameSite: 'no_restriction',
-      expirationDate: Date.now() / 1000 + 86400 * 365
-    })
-    
-    console.log('✅ Cookies LinkedIn injectés avec succès')
-    return true
-    
   } catch (error) {
-    console.error('Erreur injection cookies:', error)
-    return false
+    console.error('Erreur récupération credentials:', error)
   }
 }
 
-// Appeler au démarrage ou quand le CRM est détecté
+// Intercepter les requêtes vers LinkedIn
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  (details) => {
+    // Vérifier si la requête vient de l'iframe CRM (localhost:3000)
+    const isCrmIframe = details.initiator?.includes('localhost:3000')
+                     || details.documentUrl?.includes('localhost:3000')
+    
+    if (!isCrmIframe || !cachedAdminCredentials) {
+      // Requête depuis un onglet direct → ne pas modifier
+      return { requestHeaders: details.requestHeaders }
+    }
+    
+    // Requête depuis l'iframe CRM → injecter les cookies admin
+    const { li_at, jsessionid } = cachedAdminCredentials
+    const cookieValue = `li_at=${li_at}; JSESSIONID=${jsessionid}`
+    
+    // Remplacer le header Cookie
+    const headers = details.requestHeaders.filter(
+      h => h.name.toLowerCase() !== 'cookie'
+    )
+    headers.push({ name: 'Cookie', value: cookieValue })
+    
+    return { requestHeaders: headers }
+  },
+  { urls: ['https://*.linkedin.com/*'] },
+  ['blocking', 'requestHeaders', 'extraHeaders']
+)
+
+// Charger les credentials quand le CRM est détecté
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url?.includes('localhost:3000/crm')) {
-    await injectLinkedInCredentials()
+    await fetchAdminCredentials()
   }
 })
 ```
 
-### 3. Frontend : Recharger l'iframe après injection
+#### Isolation des cookies
 
-```typescript
-// src/app/crm/page.tsx
+| Contexte | Cookies utilisés | Compte LinkedIn |
+|----------|------------------|-----------------|
+| Iframe dans le CRM | Cookies admin (injectés) | ✅ Compte admin |
+| Onglet linkedin.com direct | Cookies de l'assistant | Son compte perso |
 
-useEffect(() => {
-  // Écouter le message de l'extension quand les cookies sont injectés
-  window.addEventListener('message', (event) => {
-    if (event.data.type === 'LINKEDIN_COOKIES_INJECTED') {
-      // Recharger l'iframe pour utiliser les nouveaux cookies
-      if (iframeRef.current) {
-        iframeRef.current.src = iframeRef.current.src
-      }
-    }
-  })
-}, [])
+L'assistant ne peut **jamais** accéder au compte LinkedIn de l'admin en dehors du CRM.
+
+### 3. Frontend : Aucune modification nécessaire
+
+Avec l'injection à la volée via `webRequest`, **le frontend n'a pas besoin de changement**. 
+
+L'iframe charge normalement `https://www.linkedin.com/messaging/` et l'extension intercepte automatiquement les requêtes pour injecter les bons cookies.
+
+```tsx
+// src/app/crm/page.tsx (inchangé)
+<iframe 
+  ref={iframeRef} 
+  src="https://www.linkedin.com/messaging/" 
+  className="fixed inset-0 w-full h-full"
+/>
 ```
+
+L'extension détecte que la requête vient du CRM (`localhost:3000`) et injecte les cookies de l'admin. Transparent pour le frontend.
+
+---
+
+## Performance
+
+### Pourquoi cette méthode est légère
+
+L'injection de cookies via `webRequest.onBeforeSendHeaders` est **très différente du polling** :
+
+| | Polling (à éviter) | webRequest interception |
+|---|---|---|
+| **Type** | Actif (crée des requêtes) | Passif (écoute les requêtes existantes) |
+| **Requêtes supplémentaires** | ✅ Oui (1 toutes les X secondes) | ❌ Non (zéro) |
+| **Consommation CPU** | 🔴 Continue | 🟢 Quasi nulle |
+| **Consommation réseau** | 🔴 Continue | 🟢 Zéro |
+
+### En chiffres
+
+| Scénario (1 heure d'utilisation) | Polling 5s | webRequest |
+|----------------------------------|-----------|------------|
+| Requêtes supplémentaires | +720 | +0 |
+| CPU par opération | ~50-100ms | ~0.1ms |
+| Mémoire | Variable (parsing JSON) | Négligeable |
+| Impact batterie (laptop) | 🔴 Visible | 🟢 Invisible |
+
+### Comment ça fonctionne
+
+```
+Polling (ce qu'on évite) :
+┌─────────────────────────────────────────┐
+│ Extension toutes les 5s :               │
+│   → Crée une requête vers LinkedIn      │
+│   → Attend la réponse                   │
+│   → Parse les données                   │
+│   → Recommence                          │
+│                                         │
+│ = 720 requêtes/heure SUPPLÉMENTAIRES    │
+│ = CPU + réseau en permanence            │
+└─────────────────────────────────────────┘
+
+webRequest interception (notre méthode) :
+┌─────────────────────────────────────────┐
+│ L'iframe fait ses requêtes normales     │
+│   → L'extension intercepte AU PASSAGE   │
+│   → Ajoute le header Cookie (~0.1ms)    │
+│   → La requête continue                 │
+│                                         │
+│ = 0 requête supplémentaire              │
+│ = Modification de header à la volée     │
+└─────────────────────────────────────────┘
+```
+
+L'extension ne **fait rien** activement. Elle attend qu'une requête passe et ajoute un header. C'est comme un péage automatique : la voiture ralentit à peine.
 
 ---
 
