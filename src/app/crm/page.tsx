@@ -23,7 +23,8 @@ import {
   Check,
   Trash2,
   ChevronRight,
-  Calendar
+  Calendar,
+  Filter
 } from 'lucide-react'
 
 // Types
@@ -328,16 +329,21 @@ function ReminderPopup({
 // Notes panel
 function NotesPanel({
   note,
-  onSave,
-  onClose
+  conversationId,
+  onSave
 }: {
   note: string
+  conversationId: string
   onSave: (note: string) => void
-  onClose: () => void
 }) {
   const [value, setValue] = useState(note)
   const [isSaving, setIsSaving] = useState(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Update value when conversation changes
+  useEffect(() => {
+    setValue(note)
+  }, [conversationId, note])
 
   // Auto-save after 1 second of no typing
   const handleChange = (newValue: string) => {
@@ -357,12 +363,7 @@ function NotesPanel({
           <FileEdit className="w-4 h-4 text-gray-500" />
           <h3 className="font-medium text-gray-900">Notes</h3>
         </div>
-        <div className="flex items-center gap-2">
-          {isSaving && <span className="text-xs text-gray-400">Sauvegarde...</span>}
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        {isSaving && <span className="text-xs text-gray-400">Sauvegarde...</span>}
       </div>
       <div className="flex-1 p-4">
         <textarea
@@ -466,9 +467,10 @@ export default function CRMPage() {
   const [allTags, setAllTags] = useState<ConversationTag[]>([])
   const [showTagSelector, setShowTagSelector] = useState(false)
   const [showReminderPopup, setShowReminderPopup] = useState(false)
-  const [showNotesPanel, setShowNotesPanel] = useState(false)
   const [showRemindersModal, setShowRemindersModal] = useState(false)
   const [allReminders, setAllReminders] = useState<any[]>([])
+  const [filterTags, setFilterTags] = useState<string[]>([])
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -804,7 +806,11 @@ export default function CRMPage() {
     } catch (e) { console.error('Save note error:', e) }
   }
 
-  const filteredConversations = conversations.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredConversations = conversations.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesTags = filterTags.length === 0 || filterTags.some(tagId => c.tags.some(t => t.id === tagId))
+    return matchesSearch && matchesTags
+  })
   const selectedConv = conversations.find(c => c.id === selectedConvId)
   const selectedThreadId = extractThreadId(selectedConvId)
   const selectedMessages = messages.filter(m => { if (!selectedConvId) return false; if (m.conversationId === selectedConvId) return true; return extractThreadId(m.conversationId) === selectedThreadId }).sort((a, b) => (a.timestamp ? new Date(a.timestamp).getTime() : 0) - (b.timestamp ? new Date(b.timestamp).getTime() : 0))
@@ -840,15 +846,49 @@ export default function CRMPage() {
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input type="text" placeholder="Rechercher une conversation..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-0 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all" />
+            <input type="text" placeholder="Rechercher une conversation..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-10 py-2.5 bg-gray-100 border-0 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all" />
+            <button onClick={() => setShowFilterMenu(!showFilterMenu)} className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${filterTags.length > 0 ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'}`} title="Filtrer par tags">
+              <Filter className="w-4 h-4" />
+            </button>
           </div>
+          {showFilterMenu && (
+            <div className="mt-3 p-2 bg-gray-100 rounded-xl">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-gray-500 px-1">Filtrer par tags</span>
+                {filterTags.length > 0 && (
+                  <button onClick={() => setFilterTags([])} className="text-xs text-blue-600 hover:text-blue-700">
+                    Effacer
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {allTags.map(tag => (
+                  <button key={tag.id} onClick={() => setFilterTags(prev => prev.includes(tag.id) ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all ${filterTags.includes(tag.id) ? 'text-white shadow-sm' : 'bg-white hover:opacity-80'}`}
+                    style={{ backgroundColor: filterTags.includes(tag.id) ? tag.color : undefined, color: filterTags.includes(tag.id) ? 'white' : tag.color }}>
+                    {tag.name}
+                  </button>
+                ))}
+                {allTags.length === 0 && <span className="text-xs text-gray-400 px-1">Aucun tag disponible</span>}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {filteredConversations.length === 0 ? (
             <div className="p-8 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center"><MessageSquare className="w-8 h-8 text-gray-400" /></div>
-              <p className="text-gray-500 font-medium">Aucune conversation</p>
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                {filterTags.length > 0 ? <Filter className="w-8 h-8 text-gray-400" /> : <MessageSquare className="w-8 h-8 text-gray-400" />}
+              </div>
+              <p className="text-gray-500 font-medium">
+                {filterTags.length > 0 ? 'Aucune conversation avec ces tags' : 'Aucune conversation'}
+              </p>
+              {filterTags.length > 0 && (
+                <button onClick={() => setFilterTags([])} className="mt-2 text-sm text-blue-600 hover:text-blue-700">
+                  Effacer les filtres
+                </button>
+              )}
             </div>
           ) : (
             <div className="py-2">
@@ -873,7 +913,6 @@ export default function CRMPage() {
                     <div className="flex items-center gap-1 mt-0.5">
                       {conv.tags.slice(0, 2).map(tag => <span key={tag.id} className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />)}
                       {conv.tags.length > 2 && <span className="text-[10px] text-gray-400">+{conv.tags.length - 2}</span>}
-                      {conv.note && <FileEdit className="w-3 h-3 text-gray-400 flex-shrink-0" />}
                       <p className={`text-sm truncate ${conv.unreadCount > 0 ? 'text-gray-600 font-medium' : 'text-gray-400'}`}>{conv.lastMessagePreview || 'Aucun message'}</p>
                     </div>
                   </div>
@@ -922,9 +961,6 @@ export default function CRMPage() {
                   </button>
                   {showReminderPopup && <ReminderPopup currentReminder={selectedConv.reminder} onSetReminder={handleSetReminder} onDeleteReminder={() => handleDeleteReminder()} onClose={() => setShowReminderPopup(false)} />}
                 </div>
-                <button onClick={() => setShowNotesPanel(!showNotesPanel)} className={`p-2 rounded-lg transition-colors ${showNotesPanel ? 'bg-blue-100 text-blue-600' : selectedConv.note ? 'text-blue-500 hover:bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`} title="Notes">
-                  <FileEdit className="w-5 h-5" />
-                </button>
               </div>
             </div>
 
@@ -989,7 +1025,7 @@ export default function CRMPage() {
                 </div>
               </div>
 
-              {showNotesPanel && <NotesPanel note={selectedConv.note} onSave={handleSaveNote} onClose={() => setShowNotesPanel(false)} />}
+              <NotesPanel note={selectedConv.note} conversationId={selectedConv.id} onSave={handleSaveNote} />
             </div>
           </>
         ) : (
