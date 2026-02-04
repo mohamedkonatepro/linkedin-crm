@@ -314,7 +314,7 @@ async function fetchConversations(count = 100) {
   const allConversations = [];
   const allParticipants = new Map(); // Accumulate participants from all pages
   let nextCursor = null;
-  const pageSize = Math.min(count, 40); // LinkedIn seems to cap at ~40 per request
+  const pageSize = Math.min(count, 25); // LinkedIn caps at 25 per request
   
   // Try each queryId until one works
   let workingQueryId = null;
