@@ -301,7 +301,7 @@ async function getMailboxUrn() {
 // API METHODS
 // =====================
 
-async function fetchConversations() {
+async function fetchConversations(count = 100) {
   if (!discoveredQueryIds.conversations?.length) {
     throw new Error('QueryId not discovered. Navigate to LinkedIn Messaging first.');
   }
@@ -315,8 +315,10 @@ async function fetchConversations() {
   
   for (const queryId of discoveredQueryIds.conversations) {
     try {
-      const variables = `(mailboxUrn:${encodeURIComponent(userUrn)})`;
+      // Try with count parameter for pagination
+      const variables = `(mailboxUrn:${encodeURIComponent(userUrn)},count:${count})`;
       const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
+      console.log(`🔍 Trying with count=${count}:`, endpoint.substring(0, 120));
       
       data = await makeLinkedInRequest(endpoint);
       
