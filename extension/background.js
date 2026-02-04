@@ -571,15 +571,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       (async () => {
         try {
+          // Load user config from storage (popup settings)
+          const stored = await chrome.storage.local.get(['convLimit', 'msgLimit']);
+          const convLimit = stored.convLimit || SYNC_CONFIG.conversationLimit;
+          const msgLimit = stored.msgLimit || SYNC_CONFIG.messageLimit;
+          console.log(`📊 Sync limits: ${convLimit} conv, ${msgLimit} msg/conv`);
+          
           // Do an immediate full sync
           const userUrn = await getMailboxUrn();
           const conversations = await fetchConversations();
           
           // Fetch messages for top conversations
           const allMessages = [];
-          for (const conv of conversations.slice(0, SYNC_CONFIG.conversationLimit)) {
+          for (const conv of conversations.slice(0, convLimit)) {
             try {
-              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, SYNC_CONFIG.messageLimit);
+              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, msgLimit);
               const myProfileId = userUrn?.split(':').pop()?.split(',')[0];
               
               for (const msg of result.messages || []) {
@@ -651,14 +657,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.log('🔄 Full sync requested by CRM');
       (async () => {
         try {
+          // Load user config from storage (popup settings)
+          const stored = await chrome.storage.local.get(['convLimit', 'msgLimit']);
+          const convLimit = stored.convLimit || SYNC_CONFIG.conversationLimit;
+          const msgLimit = stored.msgLimit || SYNC_CONFIG.messageLimit;
+          console.log(`📊 Sync limits: ${convLimit} conv, ${msgLimit} msg/conv`);
+          
           const userUrn = await getMailboxUrn();
           const conversations = await fetchConversations();
           
           // Fetch messages for each conversation
           const allMessages = [];
-          for (const conv of conversations.slice(0, SYNC_CONFIG.conversationLimit)) {
+          for (const conv of conversations.slice(0, convLimit)) {
             try {
-              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, SYNC_CONFIG.messageLimit);
+              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, msgLimit);
               const myProfileId = userUrn?.split(':').pop()?.split(',')[0];
               
               for (const msg of result.messages || []) {
