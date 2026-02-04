@@ -17,16 +17,14 @@ let discoveredQueryIds = {
 let mailboxUrn = null;
 
 // =====================
-// REALTIME POLLING CONFIG
+// SYNC CONFIG (no polling)
 // =====================
 
-const POLLING_CONFIG = {
-  enabled: true,
-  intervalMs: 30000,  // 30 seconds
-  crmServerUrl: 'http://localhost:3000',
-  lastPollTime: null,
-  lastMessageTimestamp: null,
-  isWebSocketActive: false,  // If WebSocket is active, reduce polling frequency
+const SYNC_CONFIG = {
+  conversationLimit: 50,  // Max conversations to sync
+  messageLimit: 30,       // Max messages per conversation
+  crmServerUrl: null,     // Auto-detected from CRM origin
+  lastMessageTimestamp: null,  // For tracking new messages
 };
 
 // Track seen messages to avoid duplicates
@@ -51,8 +49,8 @@ chrome.storage.local.get(['discoveredQueryIds', 'pollingConfig', 'seenMessageUrn
   }
   
   if (result.pollingConfig) {
-    Object.assign(POLLING_CONFIG, result.pollingConfig);
-    console.log('📦 Loaded polling config:', POLLING_CONFIG);
+    Object.assign(SYNC_CONFIG, result.pollingConfig);
+    console.log('📦 Loaded polling config:', SYNC_CONFIG);
   }
   
   if (result.seenMessageUrns && Array.isArray(result.seenMessageUrns)) {
@@ -62,51 +60,10 @@ chrome.storage.local.get(['discoveredQueryIds', 'pollingConfig', 'seenMessageUrn
 });
 
 // =====================
-// ON-DEMAND SYNC (No automatic polling)
+// ON-DEMAND SYNC (No polling)
 // =====================
 
-let pollingInterval = null;
 let crmIsActive = false;  // Track if CRM is open
-
-function startPolling() {
-  // Only start if CRM is active
-  if (!crmIsActive) {
-    console.log('⏸️ CRM not active, polling disabled');
-    return;
-  }
-  
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-  }
-  
-  console.log('🔄 Starting polling (CRM active) every', POLLING_CONFIG.intervalMs / 1000, 'seconds');
-  
-  pollingInterval = setInterval(async () => {
-    if (!crmIsActive) {
-      stopPolling();
-      return;
-    }
-    
-    // If WebSocket is active, poll less frequently (every 2 minutes instead of 30s)
-    if (POLLING_CONFIG.isWebSocketActive) {
-      const timeSinceLastPoll = Date.now() - (POLLING_CONFIG.lastPollTime || 0);
-      if (timeSinceLastPoll < 120000) { // 2 minutes
-        console.log('⏳ WebSocket active, skipping poll');
-        return;
-      }
-    }
-    
-    await pollForNewMessages();
-  }, POLLING_CONFIG.intervalMs);
-}
-
-function stopPolling() {
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-    console.log('⏹️ Polling stopped');
-  }
-}
 
 async function pollForNewMessages() {
   if (!discoveredQueryIds.conversations?.length) {
@@ -115,8 +72,7 @@ async function pollForNewMessages() {
   }
 
   try {
-    console.log('🔄 Polling for new messages...');
-    POLLING_CONFIG.lastPollTime = Date.now();
+    console.log('🔄 Checking for new messages...');
 
     // Get userUrn to detect isFromMe
     const userUrn = await getMailboxUrn();
@@ -131,8 +87,8 @@ async function pollForNewMessages() {
 
     for (const conv of recentConvs) {
       // Check if this conversation has newer activity than our last poll
-      if (POLLING_CONFIG.lastMessageTimestamp &&
-          conv.lastActivityAt <= POLLING_CONFIG.lastMessageTimestamp) {
+      if (SYNC_CONFIG.lastMessageTimestamp &&
+          conv.lastActivityAt <= SYNC_CONFIG.lastMessageTimestamp) {
         continue;
       }
 
@@ -162,7 +118,7 @@ async function pollForNewMessages() {
     
     // Update last message timestamp
     if (conversations.length > 0) {
-      POLLING_CONFIG.lastMessageTimestamp = Math.max(
+      SYNC_CONFIG.lastMessageTimestamp = Math.max(
         ...conversations.map(c => c.lastActivityAt || 0)
       );
     }
@@ -187,8 +143,13 @@ async function pollForNewMessages() {
 }
 
 async function notifyCRMServer(messages) {
+  if (!SYNC_CONFIG.crmServerUrl) {
+    console.log('⏸️ CRM URL not set, skipping server notification');
+    return;
+  }
+  
   try {
-    const response = await fetch(`${POLLING_CONFIG.crmServerUrl}/api/realtime`, {
+    const response = await fetch(`${SYNC_CONFIG.crmServerUrl}/api/realtime`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -559,19 +520,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       
     case 'REALTIME_STATUS':
       // WebSocket connection status from content script
-      POLLING_CONFIG.isWebSocketActive = message.connected;
       console.log('📡 WebSocket status:', message.connected ? 'CONNECTED' : 'DISCONNECTED');
       
-      // If WebSocket disconnected, poll immediately
-      if (!message.connected) {
+      // If WebSocket disconnected, check for missed messages
+      if (!message.connected && crmIsActive) {
+        console.log('⚡ WebSocket disconnected while CRM active - checking for missed messages');
         setTimeout(pollForNewMessages, 2000);
       }
       sendResponse({ ok: true });
       break;
       
-    case 'SET_POLLING_CONFIG':
-      Object.assign(POLLING_CONFIG, message.config);
-      chrome.storage.local.set({ pollingConfig: POLLING_CONFIG });
+    case 'SET_SYNC_CONFIG':
+      Object.assign(SYNC_CONFIG, message.config);
+      chrome.storage.local.set({ pollingConfig: SYNC_CONFIG });
       if (message.config.enabled !== undefined) {
         if (message.config.enabled) {
           startPolling();
@@ -580,13 +541,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           pollingInterval = null;
         }
       }
-      sendResponse({ ok: true, config: POLLING_CONFIG });
+      sendResponse({ ok: true, config: SYNC_CONFIG });
       break;
       
     case 'GET_POLLING_STATUS':
       sendResponse({
         ok: true,
-        config: POLLING_CONFIG,
+        config: SYNC_CONFIG,
         isPolling: !!pollingInterval,
         seenCount: seenMessageUrns.size
       });
@@ -602,6 +563,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // CRM just opened - trigger initial sync (NO polling)
       console.log('🟢 CRM is now ACTIVE - triggering initial sync');
       crmIsActive = true;
+      
+      // Store CRM URL from message
+      if (message.crmUrl) {
+        SYNC_CONFIG.crmServerUrl = message.crmUrl;
+        console.log('📍 CRM URL set to:', message.crmUrl);
+      }
       (async () => {
         try {
           // Do an immediate full sync
@@ -610,9 +577,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           
           // Fetch messages for top conversations
           const allMessages = [];
-          for (const conv of conversations.slice(0, 20)) {
+          for (const conv of conversations.slice(0, SYNC_CONFIG.conversationLimit)) {
             try {
-              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, 20);
+              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, SYNC_CONFIG.messageLimit);
               const myProfileId = userUrn?.split(':').pop()?.split(',')[0];
               
               for (const msg of result.messages || []) {
@@ -629,8 +596,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             await new Promise(r => setTimeout(r, 150));
           }
           
-          // Send to CRM server
-          await fetch(`${POLLING_CONFIG.crmServerUrl}/api/sync`, {
+          // Send to CRM server (skip if URL not set)
+          if (!SYNC_CONFIG.crmServerUrl) {
+            console.warn('⚠️ CRM URL not set');
+            sendResponse({ ok: true, conversations: conversations.length, messages: allMessages.length });
+            return;
+          }
+          
+          await fetch(`${SYNC_CONFIG.crmServerUrl}/api/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -683,9 +656,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           
           // Fetch messages for each conversation
           const allMessages = [];
-          for (const conv of conversations.slice(0, 20)) {
+          for (const conv of conversations.slice(0, SYNC_CONFIG.conversationLimit)) {
             try {
-              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, 20);
+              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, SYNC_CONFIG.messageLimit);
               const myProfileId = userUrn?.split(':').pop()?.split(',')[0];
               
               for (const msg of result.messages || []) {
@@ -703,8 +676,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             await new Promise(r => setTimeout(r, 200));
           }
           
-          // Send to CRM server
-          await fetch(`${POLLING_CONFIG.crmServerUrl}/api/sync`, {
+          // Send to CRM server (skip if URL not set)
+          if (!SYNC_CONFIG.crmServerUrl) {
+            console.warn('⚠️ CRM URL not set');
+            sendResponse({ ok: true, conversations: conversations.length, messages: allMessages.length });
+            return;
+          }
+          
+          await fetch(`${SYNC_CONFIG.crmServerUrl}/api/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

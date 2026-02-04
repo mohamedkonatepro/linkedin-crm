@@ -6,11 +6,11 @@
 
 console.log('🔌 LinkedIn CRM Content Script loaded on:', window.location.href);
 
-// Config
+// Config - URL auto-detected from message origin
 let config = {
-  apiUrl: 'http://localhost:3000',
+  apiUrl: null,  // Will be set from event.origin
   convLimit: 50,
-  msgLimit: 20,
+  msgLimit: 30,
 };
 
 // Track seen message URNs to avoid duplicates
@@ -276,13 +276,20 @@ setupWebSocketInterception();
 window.addEventListener('message', async (event) => {
   if (!event.data || event.data.source !== 'linkedin-crm') return;
   
+  // Auto-detect CRM URL from message origin
+  const crmUrl = event.origin || null;
+  if (crmUrl && crmUrl !== 'null') {
+    config.apiUrl = crmUrl;
+    console.log('📍 CRM URL detected:', crmUrl);
+  }
+  
   console.log('📨 Window message from CRM:', event.data.type);
   
   // Handle CRM lifecycle events
   if (event.data.type === 'CRM_ACTIVE') {
     console.log('🟢 CRM signaled ACTIVE - triggering sync');
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'CRM_ACTIVE' });
+      const response = await chrome.runtime.sendMessage({ type: 'CRM_ACTIVE', crmUrl });
       window.parent.postMessage({
         source: 'linkedin-extension',
         type: 'CRM_ACTIVE_RESPONSE',
