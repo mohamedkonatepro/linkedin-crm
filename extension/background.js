@@ -581,7 +581,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           
           // Do an immediate full sync
           const userUrn = await getMailboxUrn();
-          const conversations = await fetchConversations();
+          const conversations = await fetchConversations(convLimit);
           
           // Fetch messages for top conversations
           const allMessages = [];
@@ -666,7 +666,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           console.log(`📊 Sync limits: ${convLimit} conv, ${msgLimit} msg/conv`);
           
           const userUrn = await getMailboxUrn();
-          const conversations = await fetchConversations();
+          const conversations = await fetchConversations(convLimit);
           
           // Fetch messages for each conversation
           const allMessages = [];
