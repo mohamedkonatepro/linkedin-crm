@@ -309,27 +309,54 @@ async function fetchConversations(count = 100) {
   const userUrn = await getMailboxUrn();
   if (!userUrn) throw new Error('Could not get mailbox URN');
   
+  // LinkedIn uses cursor-based pagination
+  // We'll fetch multiple pages to get the requested count
+  const allConversations = [];
+  const allParticipants = new Map(); // Accumulate participants from all pages
+  let nextCursor = null;
+  const pageSize = Math.min(count, 40); // LinkedIn seems to cap at ~40 per request
+  
   // Try each queryId until one works
-  let data = null;
+  let workingQueryId = null;
   let lastError = null;
   
   for (const queryId of discoveredQueryIds.conversations) {
     try {
-      // Try with count parameter for pagination
-      const variables = `(mailboxUrn:${encodeURIComponent(userUrn)},count:${count})`;
+      // Build variables with proper LinkedIn format
+      const queryPart = `query:(predicateUnions:List((conversationCategoryPredicate:(category:INBOX))))`;
+      const variables = `(${queryPart},count:${pageSize},mailboxUrn:${encodeURIComponent(userUrn)})`;
       const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
-      console.log(`🔍 Trying with count=${count}:`, endpoint.substring(0, 120));
+      console.log(`🔍 Trying with count=${pageSize}:`, endpoint.substring(0, 150));
       
-      data = await makeLinkedInRequest(endpoint);
+      const data = await makeLinkedInRequest(endpoint);
       
       // Check if we got actual data
       const convCount = data.included?.filter(i => i.$type === 'com.linkedin.messenger.Conversation')?.length || 0;
       if (convCount > 0) {
         console.log(`✅ QueryId ${queryId.substring(0, 30)}... returned ${convCount} conversations`);
+        workingQueryId = queryId;
+        
+        // Parse conversations from first page
+        const pageConvs = data.included?.filter(item => 
+          item.$type === 'com.linkedin.messenger.Conversation'
+        ) || [];
+        allConversations.push(...pageConvs);
+        
+        // Accumulate participants
+        for (const item of data.included || []) {
+          if (item.$type === 'com.linkedin.messenger.MessagingParticipant') {
+            allParticipants.set(item.entityUrn, item);
+          }
+        }
+        
+        // Get nextCursor for pagination
+        const paging = data.data?.messengerConversationsByCriteria?.paging;
+        nextCursor = paging?.nextCursor || null;
+        
+        console.log(`📄 Page 1: ${pageConvs.length} conversations, nextCursor: ${nextCursor ? 'yes' : 'no'}`);
         break;
       } else {
         console.log(`⚠️ QueryId ${queryId.substring(0, 30)}... returned 0 conversations, trying next...`);
-        data = null;
       }
     } catch (e) {
       console.warn(`❌ QueryId ${queryId.substring(0, 30)}... failed:`, e.message);
@@ -337,24 +364,62 @@ async function fetchConversations(count = 100) {
     }
   }
   
-  if (!data) {
+  if (!workingQueryId || allConversations.length === 0) {
     throw lastError || new Error('All queryIds failed. Refresh LinkedIn Messaging.');
   }
   
-  // Parse conversations
-  const conversations = data.included?.filter(item => 
-    item.$type === 'com.linkedin.messenger.Conversation'
-  ) || [];
-  
-  // Build participant map
-  const participantMap = new Map();
-  for (const item of data.included || []) {
-    if (item.$type === 'com.linkedin.messenger.MessagingParticipant') {
-      participantMap.set(item.entityUrn, item);
+  // Fetch more pages if needed and cursor available
+  let pageNum = 2;
+  while (nextCursor && allConversations.length < count) {
+    try {
+      const queryPart = `query:(predicateUnions:List((conversationCategoryPredicate:(category:INBOX))))`;
+      const variables = `(${queryPart},count:${pageSize},mailboxUrn:${encodeURIComponent(userUrn)},nextCursor:${encodeURIComponent(nextCursor)})`;
+      const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${workingQueryId}&variables=${variables}`;
+      
+      console.log(`📄 Fetching page ${pageNum}...`);
+      const data = await makeLinkedInRequest(endpoint);
+      
+      const pageConvs = data.included?.filter(item => 
+        item.$type === 'com.linkedin.messenger.Conversation'
+      ) || [];
+      
+      if (pageConvs.length === 0) break;
+      
+      allConversations.push(...pageConvs);
+      
+      // Accumulate participants
+      for (const item of data.included || []) {
+        if (item.$type === 'com.linkedin.messenger.MessagingParticipant') {
+          allParticipants.set(item.entityUrn, item);
+        }
+      }
+      
+      // Get next cursor
+      const paging = data.data?.messengerConversationsByCriteria?.paging;
+      nextCursor = paging?.nextCursor || null;
+      
+      console.log(`📄 Page ${pageNum}: ${pageConvs.length} conversations (total: ${allConversations.length})`);
+      pageNum++;
+      
+      // Small delay between pages
+      await new Promise(r => setTimeout(r, 300));
+    } catch (e) {
+      console.warn(`❌ Page ${pageNum} failed:`, e.message);
+      break;
     }
   }
   
-  // Enrich conversations
+  // Deduplicate by entityUrn
+  const seen = new Set();
+  const conversations = allConversations.filter(c => {
+    if (seen.has(c.entityUrn)) return false;
+    seen.add(c.entityUrn);
+    return true;
+  });
+  
+  console.log(`📬 Total unique conversations: ${conversations.length}, participants: ${allParticipants.size}`);
+  
+  // Enrich conversations with participant data
   for (const conv of conversations) {
     conv._fullUrn = `urn:li:msg_conversation:(${userUrn},${conv.entityUrn.split(':').pop()})`;
     
@@ -362,7 +427,7 @@ async function fetchConversations(count = 100) {
     for (const pUrn of participantUrns) {
       if (pUrn.includes(userUrn.split(':').pop())) continue;
       
-      const participant = participantMap.get(pUrn);
+      const participant = allParticipants.get(pUrn);
       if (participant) {
         const member = participant.participantType?.member;
         if (member) {
