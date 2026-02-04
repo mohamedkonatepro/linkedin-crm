@@ -589,14 +589,47 @@ export default function CRMPage() {
     }
   }, [])
 
-  // Initial fetch
+  // Signal CRM active/inactive to extension for on-demand sync
   useEffect(() => {
+    // Initial data fetch from DB
     fetchData()
     fetchTags()
     fetchAllReminders()
-    const interval = setInterval(fetchData, 10000)
-    return () => clearInterval(interval)
-  }, [fetchData, fetchTags, fetchAllReminders])
+    
+    // Signal to extension that CRM is now active
+    // This triggers the initial LinkedIn sync
+    const signalActive = () => {
+      if (iframeRef.current?.contentWindow) {
+        console.log('📤 Signaling CRM_ACTIVE to extension')
+        iframeRef.current.contentWindow.postMessage({
+          source: 'linkedin-crm',
+          type: 'CRM_ACTIVE'
+        }, '*')
+      }
+    }
+    
+    // Wait for iframe to load before signaling
+    const checkIframe = setInterval(() => {
+      if (iframeLoaded) {
+        signalActive()
+        clearInterval(checkIframe)
+      }
+    }, 500)
+    
+    // Also signal when iframe finishes loading
+    const handleIframeLoad = () => signalActive()
+    
+    // Cleanup: signal inactive when leaving
+    return () => {
+      clearInterval(checkIframe)
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({
+          source: 'linkedin-crm',
+          type: 'CRM_INACTIVE'
+        }, '*')
+      }
+    }
+  }, [fetchData, fetchTags, fetchAllReminders, iframeLoaded])
 
   // WebSocket realtime handler
   useEffect(() => {
@@ -639,55 +672,46 @@ export default function CRMPage() {
           }
         })
       }
-      if (event.data.type === 'REALTIME_STATUS') setRealtimeStatus(event.data.connected ? 'websocket' : 'polling')
+      if (event.data.type === 'REALTIME_STATUS') {
+        const wasConnected = realtimeStatus === 'websocket'
+        const isNowConnected = event.data.connected
+        setRealtimeStatus(isNowConnected ? 'websocket' : 'polling')
+        
+        // Auto re-sync when WebSocket reconnects after being disconnected
+        if (!wasConnected && isNowConnected) {
+          console.log('🔄 WebSocket reconnected - triggering re-sync')
+          fetchData()
+        }
+        
+        // If WebSocket disconnected, trigger a sync to catch up
+        if (wasConnected && !isNowConnected) {
+          console.log('⚠️ WebSocket disconnected - triggering catch-up sync')
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage({
+              source: 'linkedin-crm',
+              type: 'SYNC_REQUEST'
+            }, '*')
+          }
+        }
+      }
+      
+      // Handle sync responses
+      if (event.data.type === 'SYNC_RESPONSE' || event.data.type === 'CRM_ACTIVE_RESPONSE') {
+        if (event.data.ok) {
+          console.log('✅ Sync completed:', event.data)
+          // Refresh data from DB after sync
+          fetchData()
+        } else {
+          console.error('❌ Sync failed:', event.data.error)
+        }
+      }
     }
     window.addEventListener('message', handleRealtimeMessage)
     return () => window.removeEventListener('message', handleRealtimeMessage)
   }, [])
 
-  // Polling realtime
-  useEffect(() => {
-    const pollRealtime = async () => {
-      try {
-        const url = lastRealtimeCheckRef.current ? `/api/realtime?since=${encodeURIComponent(lastRealtimeCheckRef.current)}` : '/api/realtime?limit=50'
-        const res = await fetch(url)
-        const json = await res.json()
-        if (json.ok && json.messages?.length > 0) {
-          if (realtimeStatus !== 'websocket') setRealtimeStatus('polling')
-          const now = Date.now()
-          recentlySentRef.current.forEach((ts, key) => { if (now - ts > 30000) recentlySentRef.current.delete(key) })
-          const filteredMessages = json.messages.filter((m: any) => !recentlySentRef.current.has(`${m.conversationId || ''}:${(m.content || '').trim().substring(0, 100)}`))
-          if (filteredMessages.length === 0) { lastRealtimeCheckRef.current = new Date().toISOString(); return }
-          const newMsgs: Message[] = filteredMessages.map((m: any, i: number) => ({
-            id: m.urn || `poll-${Date.now()}-${i}`,
-            conversationId: m.conversationId || null,
-            content: m.content || '',
-            isFromMe: m.isFromMe || false,
-            timestamp: m.timestamp || new Date().toISOString(),
-            attachments: m.attachments || null
-          }))
-          let trulyNewMessages: Message[] = []
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id))
-            const createContentKey = (m: Message) => `${extractThreadId(m.conversationId)}:${(m.content || '').trim().substring(0, 100)}`
-            const existingContentKeys = new Set(prev.map(createContentKey))
-            trulyNewMessages = newMsgs.filter(m => !existingIds.has(m.id) && !existingContentKeys.has(createContentKey(m)))
-            return trulyNewMessages.length > 0 ? [...prev, ...trulyNewMessages] : prev
-          })
-          trulyNewMessages.filter(m => !m.isFromMe).forEach(msg => {
-            const msgThreadId = extractThreadId(msg.conversationId || '')
-            if (msgThreadId) {
-              setConversations(prev => prev.map(conv => extractThreadId(conv.id) === msgThreadId ? { ...conv, lastMessagePreview: msg.content || '[Attachment]', lastMessageTime: msg.timestamp, unreadCount: conv.unreadCount + 1 } : conv))
-            }
-          })
-        }
-        lastRealtimeCheckRef.current = new Date().toISOString()
-      } catch (e) { console.error('Realtime poll error:', e) }
-    }
-    const interval = setInterval(pollRealtime, 5000)
-    pollRealtime()
-    return () => clearInterval(interval)
-  }, [realtimeStatus])
+  // NO POLLING - Realtime comes exclusively from WebSocket
+  // When WebSocket disconnects, we trigger a one-time sync (handled in the WebSocket handler above)
 
   // Auto-scroll
   useLayoutEffect(() => {
@@ -700,7 +724,24 @@ export default function CRMPage() {
     prevMessagesLengthRef.current = messages.length
   }, [selectedConvId, messages])
 
-  const handleSync = async () => { setIsLoading(true); await fetchData(); setIsLoading(false) }
+  const handleSync = async () => {
+    setIsLoading(true)
+    
+    // Trigger full sync via extension (fetches from LinkedIn)
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        source: 'linkedin-crm',
+        type: 'SYNC_REQUEST'
+      }, '*')
+      
+      // Wait for sync to complete (extension will update DB, then we fetch)
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+    
+    // Fetch updated data from DB
+    await fetchData()
+    setIsLoading(false)
+  }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

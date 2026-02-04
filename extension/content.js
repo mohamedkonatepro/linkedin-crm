@@ -278,6 +278,53 @@ window.addEventListener('message', async (event) => {
   
   console.log('📨 Window message from CRM:', event.data.type);
   
+  // Handle CRM lifecycle events
+  if (event.data.type === 'CRM_ACTIVE') {
+    console.log('🟢 CRM signaled ACTIVE - triggering sync');
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'CRM_ACTIVE' });
+      window.parent.postMessage({
+        source: 'linkedin-extension',
+        type: 'CRM_ACTIVE_RESPONSE',
+        ...response
+      }, '*');
+    } catch (e) {
+      window.parent.postMessage({
+        source: 'linkedin-extension',
+        type: 'CRM_ACTIVE_RESPONSE',
+        ok: false,
+        error: e.message
+      }, '*');
+    }
+    return;
+  }
+  
+  if (event.data.type === 'CRM_INACTIVE') {
+    console.log('🔴 CRM signaled INACTIVE');
+    chrome.runtime.sendMessage({ type: 'CRM_INACTIVE' }).catch(() => {});
+    return;
+  }
+  
+  if (event.data.type === 'SYNC_REQUEST') {
+    console.log('🔄 CRM requested sync');
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'FULL_SYNC' });
+      window.parent.postMessage({
+        source: 'linkedin-extension',
+        type: 'SYNC_RESPONSE',
+        ...response
+      }, '*');
+    } catch (e) {
+      window.parent.postMessage({
+        source: 'linkedin-extension',
+        type: 'SYNC_RESPONSE',
+        ok: false,
+        error: e.message
+      }, '*');
+    }
+    return;
+  }
+  
   if (event.data.type === 'SEND_MESSAGE') {
     try {
       let response;

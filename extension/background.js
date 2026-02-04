@@ -62,19 +62,31 @@ chrome.storage.local.get(['discoveredQueryIds', 'pollingConfig', 'seenMessageUrn
 });
 
 // =====================
-// INTELLIGENT POLLING
+// ON-DEMAND SYNC (No automatic polling)
 // =====================
 
 let pollingInterval = null;
+let crmIsActive = false;  // Track if CRM is open
 
 function startPolling() {
+  // Only start if CRM is active
+  if (!crmIsActive) {
+    console.log('⏸️ CRM not active, polling disabled');
+    return;
+  }
+  
   if (pollingInterval) {
     clearInterval(pollingInterval);
   }
   
-  console.log('🔄 Starting intelligent polling every', POLLING_CONFIG.intervalMs / 1000, 'seconds');
+  console.log('🔄 Starting polling (CRM active) every', POLLING_CONFIG.intervalMs / 1000, 'seconds');
   
   pollingInterval = setInterval(async () => {
+    if (!crmIsActive) {
+      stopPolling();
+      return;
+    }
+    
     // If WebSocket is active, poll less frequently (every 2 minutes instead of 30s)
     if (POLLING_CONFIG.isWebSocketActive) {
       const timeSinceLastPoll = Date.now() - (POLLING_CONFIG.lastPollTime || 0);
@@ -86,9 +98,14 @@ function startPolling() {
     
     await pollForNewMessages();
   }, POLLING_CONFIG.intervalMs);
-  
-  // Also poll immediately on start
-  setTimeout(pollForNewMessages, 5000);
+}
+
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+    console.log('⏹️ Polling stopped');
+  }
 }
 
 async function pollForNewMessages() {
@@ -198,8 +215,9 @@ async function notifyCRMServer(messages) {
   }
 }
 
-// Start polling when extension loads
-startPolling();
+// DON'T start polling automatically - wait for CRM to signal it's active
+// startPolling();
+console.log('🔌 Extension ready - waiting for CRM to connect');
 
 // =====================
 // NETWORK INTERCEPTION - Capture queryIds
@@ -578,6 +596,146 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       pollForNewMessages()
         .then(() => sendResponse({ ok: true }))
         .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true;
+      
+    case 'CRM_ACTIVE':
+      // CRM just opened - trigger initial sync (NO polling)
+      console.log('🟢 CRM is now ACTIVE - triggering initial sync');
+      crmIsActive = true;
+      (async () => {
+        try {
+          // Do an immediate full sync
+          const userUrn = await getMailboxUrn();
+          const conversations = await fetchConversations();
+          
+          // Fetch messages for top conversations
+          const allMessages = [];
+          for (const conv of conversations.slice(0, 20)) {
+            try {
+              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, 20);
+              const myProfileId = userUrn?.split(':').pop()?.split(',')[0];
+              
+              for (const msg of result.messages || []) {
+                const isFromMe = myProfileId && msg.sender ? msg.sender.includes(myProfileId) : false;
+                allMessages.push({
+                  ...msg,
+                  isFromMe,
+                  conversationUrn: conv.entityUrn || conv._fullUrn
+                });
+              }
+            } catch (e) {
+              console.warn('Error fetching messages for', conv._participantName);
+            }
+            await new Promise(r => setTimeout(r, 150));
+          }
+          
+          // Send to CRM server
+          await fetch(`${POLLING_CONFIG.crmServerUrl}/api/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'initial_sync',
+              timestamp: new Date().toISOString(),
+              conversations: conversations.map(c => ({
+                threadId: c.entityUrn || c._fullUrn,
+                linkedinId: c._participantId,
+                name: c._participantName || 'Unknown',
+                avatarUrl: c._participantPicture || null,
+                headline: c._participantHeadline || '',
+                lastMessageTime: c.lastActivityAt ? new Date(c.lastActivityAt).toISOString() : null,
+                isUnread: (c.unreadCount || 0) > 0
+              })),
+              messages: allMessages.map(msg => ({
+                urn: msg.entityUrn,
+                conversationId: msg.conversationUrn,
+                content: msg.body || '',
+                timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : new Date().toISOString(),
+                isFromMe: msg.isFromMe || false,
+                attachments: msg.attachments || null
+              }))
+            })
+          });
+          
+          // NO polling - WebSocket handles realtime
+          console.log('✅ Initial sync complete:', conversations.length, 'conversations,', allMessages.length, 'messages');
+          sendResponse({ ok: true, conversations: conversations.length, messages: allMessages.length });
+        } catch (err) {
+          console.error('❌ Initial sync failed:', err);
+          sendResponse({ ok: false, error: err.message });
+        }
+      })();
+      return true;
+      
+    case 'CRM_INACTIVE':
+      // CRM closed - mark as inactive
+      console.log('🔴 CRM is now INACTIVE');
+      crmIsActive = false;
+      sendResponse({ ok: true });
+      break;
+      
+    case 'FULL_SYNC':
+      // Manual sync request from CRM
+      console.log('🔄 Full sync requested by CRM');
+      (async () => {
+        try {
+          const userUrn = await getMailboxUrn();
+          const conversations = await fetchConversations();
+          
+          // Fetch messages for each conversation
+          const allMessages = [];
+          for (const conv of conversations.slice(0, 20)) {
+            try {
+              const result = await fetchMessages(conv.entityUrn || conv._fullUrn, 20);
+              const myProfileId = userUrn?.split(':').pop()?.split(',')[0];
+              
+              for (const msg of result.messages || []) {
+                const isFromMe = myProfileId && msg.sender ? msg.sender.includes(myProfileId) : false;
+                allMessages.push({
+                  ...msg,
+                  isFromMe,
+                  conversationUrn: conv.entityUrn || conv._fullUrn,
+                  participantName: conv._participantName
+                });
+              }
+            } catch (e) {
+              console.warn('Error fetching messages for', conv._participantName);
+            }
+            await new Promise(r => setTimeout(r, 200));
+          }
+          
+          // Send to CRM server
+          await fetch(`${POLLING_CONFIG.crmServerUrl}/api/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'full_sync',
+              timestamp: new Date().toISOString(),
+              conversations: conversations.map(c => ({
+                threadId: c.entityUrn || c._fullUrn,
+                linkedinId: c._participantId,
+                name: c._participantName || 'Unknown',
+                avatarUrl: c._participantPicture || null,
+                headline: c._participantHeadline || '',
+                lastMessageTime: c.lastActivityAt ? new Date(c.lastActivityAt).toISOString() : null,
+                isUnread: (c.unreadCount || 0) > 0,
+                isStarred: c.starred || false
+              })),
+              messages: allMessages.map(msg => ({
+                urn: msg.entityUrn,
+                conversationId: msg.conversationUrn,
+                content: msg.body || '',
+                timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : new Date().toISOString(),
+                isFromMe: msg.isFromMe || false,
+                attachments: msg.attachments || null
+              }))
+            })
+          });
+          
+          sendResponse({ ok: true, conversations: conversations.length, messages: allMessages.length });
+        } catch (err) {
+          sendResponse({ ok: false, error: err.message });
+        }
+      })();
       return true;
       
     case 'FETCH_ALL_CONVERSATIONS':
