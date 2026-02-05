@@ -171,9 +171,24 @@ async function checkConnection() {
         return true;
       }
     } catch (e) {
-      // Content script not responding
+      console.log('Content script not responding:', e.message);
+      // Try to inject content script manually
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: result.tab.id },
+          files: ['content.js']
+        });
+        // Retry ping after injection
+        const retryResponse = await chrome.tabs.sendMessage(result.tab.id, { type: 'PING' });
+        if (retryResponse?.ok) {
+          setStatus('connected', 'LinkedIn Messaging ✓');
+          return true;
+        }
+      } catch (injectError) {
+        console.log('Script injection failed:', injectError.message);
+      }
     }
-    setStatus('disconnected', 'Rafraîchis LinkedIn (F5)');
+    setStatus('disconnected', 'Recharge l\'extension (chrome://extensions)');
     return false;
   }
   
