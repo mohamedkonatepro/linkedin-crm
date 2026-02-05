@@ -478,7 +478,13 @@ async function fetchConversations(count = 100) {
   
   // Enrich conversations with participant data
   for (const conv of conversations) {
-    conv._fullUrn = `urn:li:msg_conversation:(${userUrn},${conv.entityUrn.split(':').pop()})`;
+    // entityUrn is already in full format: urn:li:msg_conversation:(urn:li:fsd_profile:xxx,convId)
+    // Only reconstruct if it's not already in the full format
+    if (conv.entityUrn.includes('msg_conversation')) {
+      conv._fullUrn = conv.entityUrn;
+    } else {
+      conv._fullUrn = `urn:li:msg_conversation:(${userUrn},${conv.entityUrn.split(':').pop()})`;
+    }
     
     const participantUrns = conv['*conversationParticipants'] || [];
     for (const pUrn of participantUrns) {
