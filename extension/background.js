@@ -551,7 +551,18 @@ async function fetchMessages(conversationUrn, count = 50) {
         : `/voyager/api/messaging/conversations/${encodeURIComponent(convId)}/events?start=${start}`;
       
       const data = await makeLinkedInRequest(endpoint);
-      const elements = data.elements || [];
+      
+      // Handle both normalized format (included) and standard format (elements)
+      // Normalized format: { data: { *elements: [...] }, included: [...] }
+      // Standard format: { elements: [...] }
+      let elements = data.elements || [];
+      if (elements.length === 0 && data.included) {
+        // Filter only message events from included
+        elements = data.included.filter(item => 
+          item.$type === 'com.linkedin.voyager.messaging.Event' ||
+          item.eventContent?.['com.linkedin.voyager.messaging.event.MessageEvent']
+        );
+      }
       
       if (elements.length === 0) {
         // No more messages
@@ -560,8 +571,10 @@ async function fetchMessages(conversationUrn, count = 50) {
       
       const messages = elements.map(msg => {
         // Extract message body from different possible locations
+        // Standard format: eventContent['com.linkedin.voyager.messaging.event.MessageEvent']
+        // Normalized format: eventContent directly contains the message data
         const eventContent = msg.eventContent || {};
-        const messageEvent = eventContent['com.linkedin.voyager.messaging.event.MessageEvent'] || {};
+        const messageEvent = eventContent['com.linkedin.voyager.messaging.event.MessageEvent'] || eventContent;
         
         // Body can be in 'body' or 'attributedBody.text' (prefer attributedBody as it's more complete)
         const body = messageEvent.attributedBody?.text || messageEvent.body || '';
@@ -601,14 +614,17 @@ async function fetchMessages(conversationUrn, count = 50) {
         }
         
         // Extract sender info
+        // Standard format: from['com.linkedin.voyager.messaging.MessagingMember'].miniProfile
+        // Normalized format: *from contains URN reference
         const member = msg.from?.['com.linkedin.voyager.messaging.MessagingMember'];
         const miniProfile = member?.miniProfile;
+        const senderUrn = miniProfile?.dashEntityUrn || miniProfile?.entityUrn || msg['*from'] || msg.from;
         
         return {
           entityUrn: msg.entityUrn || msg.dashEntityUrn,
           body,
           createdAt: msg.createdAt,
-          sender: miniProfile?.dashEntityUrn || miniProfile?.entityUrn,
+          sender: senderUrn,
           senderName: miniProfile?.firstName,
           attachments: attachments.length > 0 ? attachments : undefined
         };
