@@ -70,7 +70,7 @@ let mailboxUrn = null;
 
 const SYNC_CONFIG = {
   conversationLimit: 50,  // Max conversations to sync
-  messageLimit: 30,       // Max messages per conversation
+  messageLimit: 50,       // Max messages per conversation (increased from 30)
   crmServerUrl: null,     // Auto-detected from CRM origin
   lastMessageTimestamp: null,  // For tracking new messages
 };
@@ -515,18 +515,126 @@ async function fetchConversations(count = 100) {
   return conversations;
 }
 
-async function fetchMessages(conversationUrn, count = 20) {
+async function fetchMessages(conversationUrn, count = 50) {
   const userUrn = await getMailboxUrn();
-  let fullConversationUrn = conversationUrn;
   
+  // Extract conversation ID for legacy API
+  // Format: urn:li:msg_conversation:(urn:li:fsd_profile:XXX,2-YYY) -> 2-YYY
+  // Or: 2-YYY (already just the ID)
+  let convId = conversationUrn;
+  if (conversationUrn.includes('msg_conversation')) {
+    // Extract the conversation ID part (after the comma)
+    const match = conversationUrn.match(/,([^)]+)\)/);
+    if (match) {
+      convId = match[1];
+    }
+  } else if (conversationUrn.includes('urn:li:')) {
+    convId = conversationUrn.split(':').pop();
+  }
+  
+  // Build full URN for GraphQL
+  let fullConversationUrn = conversationUrn;
   if (!conversationUrn.includes('msg_conversation')) {
-    const convId = conversationUrn.includes('urn:li:') 
-      ? conversationUrn.split(':').pop() 
-      : conversationUrn;
     fullConversationUrn = `urn:li:msg_conversation:(${userUrn},${convId})`;
   }
   
-  // Try GraphQL API first with multiple queryIds
+  // Use legacy REST API with pagination (more reliable)
+  // This API supports ?start=X for pagination
+  const allMessages = [];
+  let start = 0;
+  const pageSize = 20; // LinkedIn returns max 20 per page
+  
+  try {
+    while (allMessages.length < count) {
+      const endpoint = start === 0 
+        ? `/voyager/api/messaging/conversations/${encodeURIComponent(convId)}/events`
+        : `/voyager/api/messaging/conversations/${encodeURIComponent(convId)}/events?start=${start}`;
+      
+      const data = await makeLinkedInRequest(endpoint);
+      const elements = data.elements || [];
+      
+      if (elements.length === 0) {
+        // No more messages
+        break;
+      }
+      
+      const messages = elements.map(msg => {
+        // Extract message body from different possible locations
+        const eventContent = msg.eventContent || {};
+        const messageEvent = eventContent['com.linkedin.voyager.messaging.event.MessageEvent'] || {};
+        
+        // Body can be in 'body' or 'attributedBody.text' (prefer attributedBody as it's more complete)
+        const body = messageEvent.attributedBody?.text || messageEvent.body || '';
+        
+        // Extract attachments
+        const attachments = [];
+        for (const att of (messageEvent.attachments || [])) {
+          if (att.mediaType?.startsWith('image/')) {
+            attachments.push({
+              type: 'image',
+              url: att.reference?.string,
+              mediaType: att.mediaType,
+              name: att.name
+            });
+          } else if (att.mediaType?.startsWith('audio/')) {
+            attachments.push({
+              type: 'audio',
+              url: att.reference?.string,
+              mediaType: att.mediaType,
+              duration: att.duration
+            });
+          } else if (att.mediaType?.startsWith('video/')) {
+            attachments.push({
+              type: 'video',
+              url: att.reference?.string,
+              mediaType: att.mediaType
+            });
+          } else if (att.reference) {
+            attachments.push({
+              type: 'file',
+              url: att.reference?.string,
+              mediaType: att.mediaType,
+              name: att.name,
+              size: att.byteSize
+            });
+          }
+        }
+        
+        // Extract sender info
+        const member = msg.from?.['com.linkedin.voyager.messaging.MessagingMember'];
+        const miniProfile = member?.miniProfile;
+        
+        return {
+          entityUrn: msg.entityUrn || msg.dashEntityUrn,
+          body,
+          createdAt: msg.createdAt,
+          sender: miniProfile?.dashEntityUrn || miniProfile?.entityUrn,
+          senderName: miniProfile?.firstName,
+          attachments: attachments.length > 0 ? attachments : undefined
+        };
+      });
+      
+      allMessages.push(...messages);
+      
+      // Check if we got fewer than pageSize (means no more pages)
+      if (elements.length < pageSize) {
+        break;
+      }
+      
+      start += pageSize;
+      
+      // Small delay to avoid rate limiting
+      await new Promise(r => setTimeout(r, 100));
+    }
+    
+    console.log(`💬 Fetched ${allMessages.length} messages via legacy API with pagination`);
+    return { messages: allMessages };
+    
+  } catch (e) {
+    console.warn('Legacy API failed:', e.message, '- trying GraphQL fallback');
+  }
+  
+  // Fallback to GraphQL API (no pagination, max 20 messages)
   if (discoveredQueryIds.messages?.length) {
     for (const queryId of discoveredQueryIds.messages) {
       try {
@@ -569,7 +677,7 @@ async function fetchMessages(conversationUrn, count = 20) {
               attachments.push({
                 type: 'audio',
                 url: content.audio.url,
-                duration: content.audio.duration // in milliseconds
+                duration: content.audio.duration
               });
             }
             if (content.video?.progressiveStreams?.[0]) {
@@ -591,7 +699,7 @@ async function fetchMessages(conversationUrn, count = 20) {
         });
         
         if (messages.length > 0) {
-          console.log(`💬 Fetched ${messages.length} messages via GraphQL (queryId: ${queryId.substring(0, 25)}...)`);
+          console.log(`💬 Fetched ${messages.length} messages via GraphQL (max 20, no pagination)`);
           return { messages };
         }
       } catch (e) {
@@ -600,26 +708,8 @@ async function fetchMessages(conversationUrn, count = 20) {
     }
   }
   
-  // Fallback to legacy REST API (doesn't need queryId)
-  try {
-    const legacyUrn = encodeURIComponent(fullConversationUrn);
-    const endpoint = `/voyager/api/messaging/conversations/${legacyUrn}/events?count=${count}`;
-    
-    const data = await makeLinkedInRequest(endpoint);
-    
-    const messages = (data.elements || []).map(msg => ({
-      entityUrn: msg.entityUrn,
-      body: msg.eventContent?.['com.linkedin.voyager.messaging.event.MessageEvent']?.body || '',
-      createdAt: msg.createdAt,
-      sender: msg.from?.['com.linkedin.voyager.messaging.MessagingMember']?.miniProfile?.entityUrn
-    }));
-    
-    console.log(`💬 Fetched ${messages.length} messages via legacy API`);
-    return { messages };
-  } catch (e) {
-    console.error('Legacy messages API also failed:', e.message);
-    return { messages: [] };
-  }
+  console.error('All message APIs failed');
+  return { messages: [] };
 }
 
 // =====================
