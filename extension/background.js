@@ -6,6 +6,54 @@
 
 console.log('🚀 LinkedIn CRM Background Script loaded');
 
+// =====================
+// GLOBAL TEST FUNCTION FOR PAGINATION DEBUGGING
+// =====================
+self.testPagination = async function(requestedCount = 50) {
+  console.log(`\n🧪 PAGINATION TEST: Requesting ${requestedCount} conversations`);
+  
+  try {
+    const result = await fetchConversations(requestedCount);
+    console.log(`✅ Got ${result.length} conversations`);
+    
+    // Log first few conversation names for verification
+    result.slice(0, 5).forEach((c, i) => {
+      console.log(`   ${i+1}. ${c._participantName || 'Unknown'}`);
+    });
+    
+    return result;
+  } catch (e) {
+    console.error('❌ Test failed:', e.message);
+    return null;
+  }
+};
+
+// Test with specific page size
+self.testPageSize = async function(pageSize = 25) {
+  console.log(`\n🧪 PAGE SIZE TEST: Using pageSize=${pageSize}`);
+  
+  const userUrn = await getMailboxUrn();
+  if (!userUrn) throw new Error('No mailbox URN');
+  
+  const queryId = discoveredQueryIds.conversations?.[0];
+  if (!queryId) throw new Error('No queryId discovered');
+  
+  const queryPart = `query:(predicateUnions:List((conversationCategoryPredicate:(category:INBOX))))`;
+  const variables = `(${queryPart},count:${pageSize},mailboxUrn:${encodeURIComponent(userUrn)})`;
+  const endpoint = `/voyager/api/voyagerMessagingGraphQL/graphql?queryId=${queryId}&variables=${variables}`;
+  
+  const data = await makeLinkedInRequest(endpoint);
+  const convs = data.included?.filter(i => i.$type === 'com.linkedin.messenger.Conversation') || [];
+  
+  // Support both old and new API response formats
+  const paging = data.data?.messengerConversationsByCriteria?.paging
+    || data.data?.data?.messengerConversationsByCategoryQuery?.metadata;
+  
+  console.log(`📊 Results: requested=${pageSize}, returned=${convs.length}, hasNextCursor=${!!paging?.nextCursor}`);
+  
+  return { requested: pageSize, returned: convs.length, paging };
+};
+
 // Auto-discovered queryIds from LinkedIn's own requests
 // Store MULTIPLE queryIds since LinkedIn uses different ones
 let discoveredQueryIds = {
@@ -349,8 +397,9 @@ async function fetchConversations(count = 100) {
           }
         }
         
-        // Get nextCursor for pagination
-        const paging = data.data?.messengerConversationsByCriteria?.paging;
+        // Get nextCursor for pagination (support both old and new API formats)
+        const paging = data.data?.messengerConversationsByCriteria?.paging
+          || data.data?.data?.messengerConversationsByCategoryQuery?.metadata;
         nextCursor = paging?.nextCursor || null;
         
         console.log(`📄 Page 1: ${pageConvs.length} conversations, nextCursor: ${nextCursor ? 'yes' : 'no'}`);
@@ -394,8 +443,9 @@ async function fetchConversations(count = 100) {
         }
       }
       
-      // Get next cursor
-      const paging = data.data?.messengerConversationsByCriteria?.paging;
+      // Get next cursor (support both old and new API formats)
+      const paging = data.data?.messengerConversationsByCriteria?.paging
+        || data.data?.data?.messengerConversationsByCategoryQuery?.metadata;
       nextCursor = paging?.nextCursor || null;
       
       console.log(`📄 Page ${pageNum}: ${pageConvs.length} conversations (total: ${allConversations.length})`);
