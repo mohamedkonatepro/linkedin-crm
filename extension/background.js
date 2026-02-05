@@ -381,14 +381,26 @@ async function fetchConversations(count = 100) {
       // Check if we got actual data
       const convCount = data.included?.filter(i => i.$type === 'com.linkedin.messenger.Conversation')?.length || 0;
       if (convCount > 0) {
-        console.log(`✅ QueryId ${queryId.substring(0, 30)}... returned ${convCount} conversations`);
-        workingQueryId = queryId;
-        
         // Parse conversations from first page
         const pageConvs = data.included?.filter(item => 
           item.$type === 'com.linkedin.messenger.Conversation'
         ) || [];
+        
+        // Get nextCursor for pagination (support both old and new API formats)
+        const paging = data.data?.messengerConversationsByCriteria?.paging
+          || data.data?.data?.messengerConversationsByCategoryQuery?.metadata;
+        const cursor = paging?.nextCursor || null;
+        
+        // If we need more than one page and this queryId has no pagination, try next
+        if (!cursor && convCount < count && discoveredQueryIds.conversations.indexOf(queryId) < discoveredQueryIds.conversations.length - 1) {
+          console.log(`⚠️ QueryId ${queryId.substring(0, 30)}... returned ${convCount} but NO pagination, trying next...`);
+          continue;
+        }
+        
+        console.log(`✅ QueryId ${queryId.substring(0, 30)}... returned ${convCount} conversations`);
+        workingQueryId = queryId;
         allConversations.push(...pageConvs);
+        nextCursor = cursor;
         
         // Accumulate participants
         for (const item of data.included || []) {
@@ -396,11 +408,6 @@ async function fetchConversations(count = 100) {
             allParticipants.set(item.entityUrn, item);
           }
         }
-        
-        // Get nextCursor for pagination (support both old and new API formats)
-        const paging = data.data?.messengerConversationsByCriteria?.paging
-          || data.data?.data?.messengerConversationsByCategoryQuery?.metadata;
-        nextCursor = paging?.nextCursor || null;
         
         console.log(`📄 Page 1: ${pageConvs.length} conversations, nextCursor: ${nextCursor ? 'yes' : 'no'}`);
         break;
